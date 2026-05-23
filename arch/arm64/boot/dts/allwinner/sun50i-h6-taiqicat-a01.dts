@@ -83,7 +83,6 @@
 		compatible = "mmc-pwrseq-simple";
 		clocks = <&rtc CLK_OSC32K_FANOUT>;
 		clock-names = "ext_clock";
-		reset-gpios = <&r_pio 0 8 GPIO_ACTIVE_LOW>; /* PL8 */
 		post-power-on-delay-ms = <200>;
 	};
 };
@@ -107,6 +106,9 @@
 };
 
 &dwc3 {
+	snps,dis_u2_susphy_quirk;
+	snps,dis-u2-freeclk-exists-quirk;
+	snps,dis_u3_susphy_quirk;
 	status = "okay";
 };
 
@@ -240,6 +242,7 @@
 			};
 
 			reg_aldo2: aldo2 {
+				regulator-always-on;
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-name = "vcc-ac200";
@@ -291,6 +294,7 @@
 			};
 
 			reg_cldo3: cldo3 {
+				regulator-always-on;
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-name = "vcc-wifi-2";
@@ -346,6 +350,13 @@
 	 * vcc-pl-supply = <&reg_aldo1>;
 	 */
 	vcc-pm-supply = <&reg_aldo1>;
+
+	wlan_reg_on_hog: wlan-reg-on-hog {
+		gpio-hog;
+		gpios = <0 8 GPIO_ACTIVE_HIGH>; /* PL8, WL_REG_ON */
+		output-high;
+		line-name = "WL_REG_ON";
+	};
 };
 
 &rtc {
