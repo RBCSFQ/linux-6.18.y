@@ -128,6 +128,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-xiaobao.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-yskj.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-tvi3315a.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-zcube1-max.dtb
+dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-zk-r39a.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399-zysj.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399pro-firefly-aioc.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3399pro-rock-pi-n10.dtb
