@@ -549,7 +549,7 @@
 
 	usbc0: husb311@4e {
 		status = "okay";
-		compatible = "hynetek,husb311";
+		compatible = "hynetek,husb311", "richtek,rt1711h";
 		reg = <0x4e>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <RK_PA0 IRQ_TYPE_LEVEL_LOW>;
