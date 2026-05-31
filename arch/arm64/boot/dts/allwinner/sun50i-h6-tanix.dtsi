@@ -228,3 +228,11 @@
 &usb3phy {
 	status = "okay";
 };
+
+&i2s1 {
+	status = "okay";
+};
+
+&sound_hdmi {
+	status = "okay";
+};
