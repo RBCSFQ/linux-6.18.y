@@ -131,7 +131,7 @@
 
 &gmac1 {
 	assigned-clocks = <&cru SCLK_GMAC1_RX_TX>, <&cru SCLK_GMAC1>;
-	assigned-clock-parents = <&cru SCLK_GMAC1_RGMII_SPEED>;
+	assigned-clock-parents = <&cru SCLK_GMAC1_RGMII_SPEED>, <&cru CLK_MAC1_2TOP>;
 	assigned-clock-rates = <0>, <125000000>;
 	clock_in_out = "output";
 	phy-mode = "rgmii";
@@ -411,12 +411,10 @@
 
 &i2s1_8ch {
 	pinctrl-names = "default";
-	pinctrl-0 = <&i2s1m1_sclktx &i2s1m1_sclkrx
-		     &i2s1m1_lrcktx &i2s1m1_lrckrx
-		     &i2s1m1_sdi0   &i2s1m1_sdi1
-		     &i2s1m1_sdi2   &i2s1m1_sdi3
-		     &i2s1m1_sdo0   &i2s1m1_sdo1
-		     &i2s1m1_sdo2   &i2s1m1_sdo3>;
+	pinctrl-0 = <&i2s1m0_sclktx
+		     &i2s1m0_lrcktx
+		     &i2s1m0_sdi0
+		     &i2s1m0_sdo0>;
 	rockchip,trcm-sync-tx-only;
 	status = "okay";
 };
