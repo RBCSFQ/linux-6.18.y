@@ -132,14 +132,12 @@ void  bluesleep_exit(void)
 	remove_proc_entry("btwrite", sleep_dir);
 	remove_proc_entry("sleep", bluetooth_dir);
 	remove_proc_entry("bluetooth", 0);
-	wakeup_source_remove(tx_ws);
-	wakeup_source_remove(rx_ws);
-	wakeup_source_destroy(tx_ws);
-	wakeup_source_destroy(rx_ws);
+	wakeup_source_unregister(tx_ws);
+        wakeup_source_unregister(rx_ws);
 }
 
 /*module_init(bluesleep_init);*/
 /*module_exit(bluesleep_exit);*/
 MODULE_DESCRIPTION("Bluetooth Sleep Mode Driver ver %s " VERSION);
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+MODULE_DESCRIPTION("Unisoc UWE5621 BT LPM");
