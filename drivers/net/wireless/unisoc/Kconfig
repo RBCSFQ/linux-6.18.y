@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# Unisoc UWE5621DS WIFI/BT drivers
+
+config SPARD_WLAN_SUPPORT
+	bool "Unisoc UWE5621DS WIFI/BT Support"
+	select RK_WIFI_DEVICE_UWE5621
+	default n
+	help
+	  This enables support for Unisoc UWE5621DS combo chip
+	  (WiFi SDIO + Bluetooth UART) on Rockchip platforms.
+
+if SPARD_WLAN_SUPPORT
+source "drivers/net/wireless/unisoc/unisocwcn/Kconfig"
+source "drivers/net/wireless/unisoc/unisocwifi/Kconfig"
+source "drivers/net/wireless/unisoc/tty-sdio/Kconfig"
+endif
