@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+config TTY_OVERY_SDIO
+	tristate "UWE5621 Bluetooth TTY over SDIO"
+	depends on RK_WIFI_DEVICE_UWE5621
+	help
+	  This provides the Bluetooth HCI TTY interface for UWE5621 chip.
+	  When compiled as a module, it will be called sprdbt_tty.ko.
