@@ -21,6 +21,8 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make defconfig
+          sed -i 's/^CONFIG_CLK_IMX8MP_AUDIOMIX=y$/# CONFIG_CLK_IMX8MP_AUDIOMIX is not set/' .config
+          touch .config
           make -j$(nproc) Image dtbs
           ls -la arch/arm64/boot/Image
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
