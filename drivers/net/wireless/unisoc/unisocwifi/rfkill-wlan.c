@@ -900,7 +900,7 @@ rfkill_alloc_fail:
 	return ret;
 }
 
-static int rfkill_wlan_remove(struct platform_device *pdev)
+static void rfkill_wlan_remove(struct platform_device *pdev)
 {
 	struct rfkill_wlan_data *rfkill = platform_get_drvdata(pdev);
 
@@ -919,7 +919,6 @@ static int rfkill_wlan_remove(struct platform_device *pdev)
 	kfree(rfkill);
 	g_rfkill = NULL;
 
-	return 0;
 }
 
 static int rfkill_wlan_suspend(struct platform_device *pdev, pm_message_t state)
