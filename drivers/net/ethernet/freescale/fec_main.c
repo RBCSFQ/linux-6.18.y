@@ -2495,7 +2495,7 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 		/* check for attached phy */
 		phy_dev = phy_find_first(fep->mii_bus);
 		if (fep->dev_id && phy_dev)
-			phy_dev = phy_find_next(fep->mii_bus, phy_dev);
+			phy_dev = mdiobus_get_phy(fep->mii_bus, phy_dev);
 
 		if (!phy_dev) {
 			netdev_info(ndev, "no PHY, assuming direct connection to switch\n");
