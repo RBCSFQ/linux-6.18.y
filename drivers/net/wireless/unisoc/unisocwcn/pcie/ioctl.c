@@ -507,7 +507,7 @@ static int ioctlcmd_init(struct wcn_pcie_info *bus)
 	cdev_init(&(drv->testcdev), &fop);
 	cdev_add(&(drv->testcdev), dev, 1);
 
-	drv->myclass = class_create(THIS_MODULE, "char_class");
+	drv->myclass = class_create("char_class");
 	drv->mydev = device_create(drv->myclass, NULL, dev, NULL, "kchar");
 	PCIE_INFO("module init ok ...\n");
 
