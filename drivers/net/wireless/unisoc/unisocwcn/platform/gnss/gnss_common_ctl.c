@@ -678,7 +678,7 @@ err_attr_failed:
 	return ret;
 }
 
-static int gnss_common_ctl_remove(struct platform_device *pdev)
+static void gnss_common_ctl_remove(struct platform_device *pdev)
 {
 	gnss_cali_deinit();
 	wcn_gnss_ops_unregister();
@@ -686,7 +686,6 @@ static int gnss_common_ctl_remove(struct platform_device *pdev)
 				&gnss_common_ctl_group);
 
 	misc_deregister(&gnss_common_ctl_miscdev);
-	return 0;
 }
 static struct platform_driver gnss_common_ctl_drv = {
 	.driver = {
