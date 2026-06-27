@@ -1,0 +1,39 @@
+name: Compile W132D Kernel + DTB
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc
+
+      - name: Prepare kernel config and compile
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make defconfig
+          make -j$(nproc) Image dtbs
+          ls -la arch/arm64/boot/Image
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
+
+      - name: Package output
+        run: |
+          mkdir -p output
+          cp arch/arm64/boot/Image output/
+          cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
+          cd output && zip -r ../rk3528-w132d-kernel.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk3528-w132d-kernel
+          path: rk3528-w132d-kernel.zip
