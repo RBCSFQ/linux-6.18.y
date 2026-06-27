@@ -469,7 +469,7 @@ static  int sdio_data_transmit(uint8_t *data, size_t count)
 	return mtty_write(NULL, data, count);
 }
 
-static ssize mtty_write_plus(struct tty_struct *tty, const u8 *buf,
+static ssize_t mtty_write_plus(struct tty_struct *tty, const u8 *buf,
 		    size_t count)
 {
 	ssize_t ret;
