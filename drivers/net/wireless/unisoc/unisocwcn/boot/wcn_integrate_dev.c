@@ -788,7 +788,7 @@ static int wcn_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int  wcn_remove(struct platform_device *pdev)
+static void  wcn_remove(struct platform_device *pdev)
 {
 	struct wcn_device *wcn_dev = platform_get_drvdata(pdev);
 
@@ -799,7 +799,6 @@ static int  wcn_remove(struct platform_device *pdev)
 	kfree(wcn_dev);
 	wcn_dev = NULL;
 
-	return 0;
 }
 
 static void wcn_shutdown(struct platform_device *pdev)
