@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+config RK_WIFI_DEVICE_UWE5621
+	bool "Rockchip UWE5621 BSP Support"
+	default n
+	help
+	  Build the UWE5621 BSP (firmware download, power management)
+	  driver for Rockchip platforms.
+
+config WCN_BSP_DRIVER_BUILDIN
+	bool "Build BSP driver into kernel"
+	depends on RK_WIFI_DEVICE_UWE5621
+	default n
+	help
+	  Build the UWE5621 BSP driver statically into the kernel.
