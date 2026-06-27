@@ -413,8 +413,8 @@ static void mtty_close(struct tty_struct *tty, struct file *filp)
 	pr_info("mtty_close device success !\n");
 }
 
-static int mtty_write(struct tty_struct *tty,
-		const unsigned char *buf, int count)
+static ssize_t mtty_write(struct tty_struct *tty,
+		const u8 *buf, size_t count)
 {
 	int num = 1, ret;
 	struct mbuf_t *tx_head = NULL, *tx_tail = NULL;
@@ -469,8 +469,8 @@ static  int sdio_data_transmit(uint8_t *data, size_t count)
 	return mtty_write(NULL, data, count);
 }
 
-static int mtty_write_plus(struct tty_struct *tty, const unsigned char *buf,
-		    int count)
+static ssize mtty_write_plus(struct tty_struct *tty, const u8 *buf,
+		    size_t count)
 {
 	ssize_t ret;
 
@@ -714,7 +714,7 @@ static int  mtty_probe(struct platform_device *pdev)
 	}
 //#endif
 
-	rfkill_bluetooth_init(pdev);
+	// rfkill_bluetooth_init(pdev);
 	bluesleep_init();
 	woble_init();
 	sprdwcn_bus_chn_init(&bt_rx_ops);
@@ -796,7 +796,7 @@ static void  mtty_shutdown(struct platform_device *pdev)
 }
 #endif
 
-static int  mtty_remove(struct platform_device *pdev)
+static void  mtty_remove(struct platform_device *pdev)
 {
 	struct mtty_device *mtty = platform_get_drvdata(pdev);
 
@@ -815,7 +815,6 @@ static int  mtty_remove(struct platform_device *pdev)
 //#endif
 	bluesleep_exit();
 
-	return 0;
 }
 
 static const struct of_device_id mtty_match_table[] = {
