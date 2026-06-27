@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+config SPRDWL_NG
+	tristate "UWE5621 WiFi Driver (sprdwl_ng)"
+	depends on CFG80211
+	help
+	  This is the WiFi driver for Unisoc UWE5621 SDIO chip.
+	  When compiled as a module, it will be called sprdwl_ng.ko.
