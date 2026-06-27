@@ -21,6 +21,8 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make defconfig
+          # Disable i.MX8MP audiomix CLK (API incompatible with 6.18)
+          scripts/config --disable CLK_IMX8MP_AUDIOMIX
           make -j$(nproc) Image dtbs
           ls -la arch/arm64/boot/Image
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
