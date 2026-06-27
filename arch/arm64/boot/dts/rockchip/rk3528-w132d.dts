@@ -221,6 +221,7 @@
 };
 
 &gmac0 {
+        /delete-property/ power-domains;
 	phy-mode = "rmii";
 	phy-handle = <&rmii0_phy>;
 	clock_in_out = "input";
