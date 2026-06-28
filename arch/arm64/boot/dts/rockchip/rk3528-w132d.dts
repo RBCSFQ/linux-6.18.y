@@ -86,6 +86,22 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
+	/*
+	 * WIFI/BT chip enable regulator.
+	 * Drives gpio3 RK_PC2 HIGH at boot to take the UWE5621DS
+	 * out of reset. This bypasses both the broken 6.18 pwrseq
+	 * and the wcn_boot GPIO control.
+	 */
+	vcc_wifi_en: vcc-wifi-en {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_wifi_en";
+		regulator-always-on;
+		regulator-boot-on;
+		enable-active-high;
+		gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
+		vin-supply = <&vcc_3v3_s3>;
+	};
+
 	io-domains {
 		compatible = "rockchip,rk3528-pmu-io-domain";
 		vccio1-supply = <&vcc5v0_sys>;
@@ -104,26 +120,12 @@
 	};
 
 	/*
-	 * SDIO power sequence. No pinctrl dependency.
-	 * Uses RK_PB2 (gpio3-10) for chip power-up, separate from bt-reg-on (RK_PC2).
-	 * ACTIVE_LOW: pwrseq asserts low=reset, deasserts high=power on.
-	 * This matches the 6.12 working configuration.
-	 */
-	sdio_pwrseq: sdio-pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
-		post-power-on-delay-ms = <1000>;
-		status = "okay";
-	};
-
-	/*
 	 * UWE5621DS core management.
-	 * bt-reg-on on RK_PC2 (gpio3-18) - separate from pwrseq reset.
-	 * No wl-reg-on to avoid double-request of same GPIO.
+	 * Chip enable is handled by vcc_wifi_en regulator above.
+	 * No GPIO properties needed in uwe_bsp - avoid all conflicts.
 	 */
 	uwe_bsp: uwe-bsp {
 		compatible = "unisoc,uwe_bsp";
-		bt-reg-on = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
 		pub-int-gpio = <&gpio3 RK_PB3 GPIO_ACTIVE_HIGH>;
 		sdhci-name = <&sdio1>;
 		unisoc,btwf-file-name = "/lib/firmware/wcnmodem.bin";
@@ -186,6 +188,10 @@
 	status = "okay";
 };
 
+/*
+ * SDIO1 — NO mmc-pwrseq.
+ * Chip enable done by vcc_wifi_en regulator (always-on).
+ */
 &sdio1 {
 	/delete-property/ power-domains;
 	max-frequency = <200000000>;
@@ -195,7 +201,6 @@
 	keep-power-in-suspend;
 	non-removable;
 	cap-power-off-card;
-	mmc-pwrseq = <&sdio_pwrseq>;
 	vmmc-supply = <&vcc_3v3_s3>;
 	vqmmc-supply = <&vdd_1v8_s3>;
 	sd-uhs-sdr104;
