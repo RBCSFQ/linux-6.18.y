@@ -20,26 +20,20 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
+          sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           make defconfig
-          scripts/config --disable CLK_IMX8MP_AUDIOMIX
-          scripts/config --disable CLK_VBATTB
-          scripts/config --disable CLK_R9A06G032
-          scripts/config --disable CLK_R9A07G043
-          scripts/config --disable CLK_R9A07G044
-          scripts/config --disable CLK_R9A08G045
-          scripts/config --disable CLK_R9A09G011
-          scripts/config --disable CLK_R9A09G057
-          scripts/config --disable CLK_RZG2L
-          scripts/config --disable CLK_RZV2H
-          make olddefconfig
           make -j$(nproc) Image dtbs modules
-
-      - name: Package output
-        run: |
           mkdir -p output
           cp arch/arm64/boot/Image output/
           cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
-          cd output && zip -r ../rk3528-w132d-kernel.zip .
+          make modules_install INSTALL_MOD_PATH=./output
+          cd output && tar czf ../rk3528-w132d-kernel.tar.gz . && cd ..
+          zip -j rk3528-w132d-kernel.zip rk3528-w132d-kernel.tar.gz arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
+
+      - name: Package output
+        run: |
+          ls -la rk3528-w132d-kernel.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
