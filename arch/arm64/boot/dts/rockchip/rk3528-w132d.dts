@@ -86,15 +86,21 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	vcc_wifi_en: vcc-wifi-en {
+	/*
+	 * WIFI/BT chip power: drives chip_en AND serves as SDIO vmmc.
+	 * This way dwmmc can control the bus power through its vmmc regulator.
+	 */
+	vccio_wifi: vccio-wifi {
 		compatible = "regulator-fixed";
-		regulator-name = "vcc_wifi_en";
+		regulator-name = "vccio_wifi";
 		regulator-always-on;
 		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
 		enable-active-high;
 		gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
 		vin-supply = <&vcc_3v3_s3>;
-		startup-delay-us = <5000>;
+		startup-delay-us = <10000>;
 	};
 
 	io-domains {
@@ -179,11 +185,10 @@
 };
 
 /*
- * SDIO1 — v8: no pwrseq, no cap-power-off-card.
- * v6 proved the card IS detected when pwrseq is absent,
- * but failed to init because power mode was off.
- * Removing cap-power-off-card tells dwmmc to leave power on.
- * vcc_3v3_s3 supplies bus power via vmmc-supply.
+ * SDIO1 — v9: vccio_wifi as vmmc-supply.
+ * This regulator drives chip_en via GPIO AND provides vmmc.
+ * dwmmc will enable vmmc (which is already always-on, but the
+ * regulator framework will still report it as enabled).
  */
 &sdio1 {
 	/delete-property/ power-domains;
@@ -193,7 +198,7 @@
 	cap-sdio-irq;
 	keep-power-in-suspend;
 	non-removable;
-	vmmc-supply = <&vcc_3v3_s3>;
+	vmmc-supply = <&vccio_wifi>;
 	vqmmc-supply = <&vdd_1v8_s3>;
 	sd-uhs-sdr104;
 	status = "okay";
