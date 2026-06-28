@@ -104,16 +104,13 @@
 	};
 
 	/*
-	 * SDIO power sequence for UWE5621DS.
-	 * GPIO mapping from working 6.12 v19 DTS:
-	 *   wifi-enable-h:    gpio3 RK_PB2 (pin 10)
-	 *   wifi-reset:       gpio3 RK_PB4 (pin 12), init output-high
-	 *   reset-gpios:      gpio3 RK_PB2 (pin 10), ACTIVE_LOW
+	 * SDIO power sequence. No pinctrl dependency.
+	 * Uses RK_PB2 (gpio3-10) for chip power-up, separate from bt-reg-on (RK_PC2).
+	 * ACTIVE_LOW: pwrseq asserts low=reset, deasserts high=power on.
+	 * This matches the 6.12 working configuration.
 	 */
 	sdio_pwrseq: sdio-pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		pinctrl-names = "default";
-		pinctrl-0 = <&wifi_enable_h &wifi_reset>;
 		reset-gpios = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
 		post-power-on-delay-ms = <1000>;
 		status = "okay";
@@ -121,19 +118,8 @@
 
 	/*
 	 * UWE5621DS core management.
-	 *
-	 * Key difference from v3: NO wl-reg-on property.
-	 * The Android native DTS only has bt-reg-on, and the driver
-	 * parses wl-reg-on for chip_en and bt-reg-on for reset.
-	 * When both point to the same GPIO, the second gpio_request
-	 * fails (already claimed). So we omit wl-reg-on and let
-	 * the pwrseq handle chip enable via the SDIO bus power
-	 * sequence.
-	 *
-	 *   bt-reg-on         = gpio3 RK_PC2 (pin 18) -- device reset
-	 *   pub-int-gpio      = gpio3 RK_PB3 (pin 11) -- SDIO data interrupt
-	 *   bt-wake-host-gpio = gpio3 RK_PC1 (pin 17) -- BT wakes host
-	 *   sdhci-name = <&sdio1> -- SDIO host controller reference
+	 * bt-reg-on on RK_PC2 (gpio3-18) - separate from pwrseq reset.
+	 * No wl-reg-on to avoid double-request of same GPIO.
 	 */
 	uwe_bsp: uwe-bsp {
 		compatible = "unisoc,uwe_bsp";
@@ -302,15 +288,6 @@
 	usb {
 		vcc5v0_host_en: vcc5v0-host-en {
 			rockchip,pins = <4 RK_PC2 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
-
-	sdio-pwrseq {
-		wifi_enable_h: wifi-enable-h {
-			rockchip,pins = <3 RK_PB2 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-		wifi_reset: wifi-reset {
-			rockchip,pins = <3 RK_PB4 RK_FUNC_GPIO &pcfg_output_high>;
 		};
 	};
 
