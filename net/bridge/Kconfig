@@ -4,7 +4,7 @@
 #
 
 config BRIDGE
-	tristate "802.1d Ethernet Bridging"
+	bool "802.1d Ethernet Bridging"
 	select LLC
 	select STP
 	depends on IPV6 || IPV6=n
