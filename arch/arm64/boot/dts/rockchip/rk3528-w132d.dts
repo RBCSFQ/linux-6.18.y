@@ -86,10 +86,6 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	/*
-	 * WIFI chip enable - keeps UWE5621DS out of reset.
-	 * Same GPIO as v6 that worked: gpio3 RK_PC2, out hi.
-	 */
 	vcc_wifi_en: vcc-wifi-en {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_wifi_en";
@@ -98,6 +94,7 @@
 		enable-active-high;
 		gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
 		vin-supply = <&vcc_3v3_s3>;
+		startup-delay-us = <5000>;
 	};
 
 	io-domains {
@@ -115,20 +112,6 @@
 	usb_grf: syscon@ff300000 {
 		compatible = "rockchip,rk3528-grf", "syscon";
 		reg = <0x0 0xff300000 0x0 0x90000>;
-	};
-
-	/*
-	 * Pwrseq with a known-working GPIO (gpio4 RK_PA0 = pin 0 from bank 4).
-	 * gpio4 is at ffb20000 and is working (vcc5v0-host uses gpio4-18).
-	 * We use a dummy GPIO just so pwrseq probe succeeds and MMC can
-	 * enable the SDIO bus power. The actual chip enable is done by
-	 * vcc_wifi_en regulator above.
-	 */
-	sdio_pwrseq: sdio-pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio4 RK_PA0 GPIO_ACTIVE_HIGH>;
-		post-power-on-delay-ms = <1000>;
-		status = "okay";
 	};
 
 	uwe_bsp: uwe-bsp {
@@ -196,9 +179,11 @@
 };
 
 /*
- * SDIO1 with pwrseq back.
- * vmmc-supply provides bus power, vqmmc-supply provides I/O voltage.
- * pwrseq uses gpio4 (known working bank) to satisfy MMC pwrseq binding.
+ * SDIO1 — v8: no pwrseq, no cap-power-off-card.
+ * v6 proved the card IS detected when pwrseq is absent,
+ * but failed to init because power mode was off.
+ * Removing cap-power-off-card tells dwmmc to leave power on.
+ * vcc_3v3_s3 supplies bus power via vmmc-supply.
  */
 &sdio1 {
 	/delete-property/ power-domains;
@@ -208,8 +193,6 @@
 	cap-sdio-irq;
 	keep-power-in-suspend;
 	non-removable;
-	cap-power-off-card;
-	mmc-pwrseq = <&sdio_pwrseq>;
 	vmmc-supply = <&vcc_3v3_s3>;
 	vqmmc-supply = <&vdd_1v8_s3>;
 	sd-uhs-sdr104;
