@@ -21,21 +21,17 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
-          sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
-          sed -i 's/^obj-$(CONFIG_SPRDWL_NG).*/#&/' drivers/net/wireless/unisoc/unisocwifi/Makefile
-          sed -i 's/^obj-\$(CONFIG_DRM_SUN4I)/#&/' drivers/gpu/drm/sun4i/Makefile
           make defconfig
-          make -j$(nproc) Image dtbs modules
-          mkdir -p output
-          cp arch/arm64/boot/Image output/
-          cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
-          make modules_install INSTALL_MOD_PATH=./output
-          cd output && tar czf ../rk3528-w132d-kernel.tar.gz . && cd ..
-          zip -j rk3528-w132d-kernel.zip rk3528-w132d-kernel.tar.gz arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
+          make -j$(nproc) Image dtbs
+          ls -la arch/arm64/boot/Image
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
 
       - name: Package output
         run: |
-          ls -la rk3528-w132d-kernel.zip
+          mkdir -p output
+          cp arch/arm64/boot/Image output/
+          cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
+          cd output && zip -r ../rk3528-w132d-kernel.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
