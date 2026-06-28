@@ -86,10 +86,6 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	/*
-	 * WIFI/BT chip power: drives chip_en AND serves as SDIO vmmc.
-	 * This way dwmmc can control the bus power through its vmmc regulator.
-	 */
 	vccio_wifi: vccio-wifi {
 		compatible = "regulator-fixed";
 		regulator-name = "vccio_wifi";
@@ -185,10 +181,10 @@
 };
 
 /*
- * SDIO1 — v9: vccio_wifi as vmmc-supply.
- * This regulator drives chip_en via GPIO AND provides vmmc.
- * dwmmc will enable vmmc (which is already always-on, but the
- * regulator framework will still report it as enabled).
+ * SDIO1 — v10: add no-sd, no-mmc, supports-sdio from Android DTS.
+ * These tell the MMC core this is SDIO-only and should prevent
+ * runtime PM suspension that kills card initialization.
+ * Also add rockchip,use-v2-tuning for better signal tuning.
  */
 &sdio1 {
 	/delete-property/ power-domains;
@@ -198,6 +194,10 @@
 	cap-sdio-irq;
 	keep-power-in-suspend;
 	non-removable;
+	no-sd;
+	no-mmc;
+	supports-sdio;
+	rockchip,use-v2-tuning;
 	vmmc-supply = <&vccio_wifi>;
 	vqmmc-supply = <&vdd_1v8_s3>;
 	sd-uhs-sdr104;
