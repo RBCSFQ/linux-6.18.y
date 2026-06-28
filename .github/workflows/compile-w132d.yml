@@ -23,6 +23,7 @@ jobs:
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           sed -i 's/^obj-$(CONFIG_SPRDWL_NG).*/#&/' drivers/net/wireless/unisoc/unisocwifi/Makefile
+          sed -i 's/^obj-\$(CONFIG_DRM_SUN4I)/#&/' drivers/gpu/drm/sun4i/Makefile
           make defconfig
           make -j$(nproc) Image dtbs modules
           mkdir -p output
