@@ -21,6 +21,8 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make defconfig
+          scripts/config --disable CLK_IMX8MP_AUDIOMIX
+          scripts/config --disable CLK_VBATTB
           make -j$(nproc) Image dtbs modules
           mkdir -p output
           cp arch/arm64/boot/Image output/
