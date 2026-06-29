@@ -26,7 +26,7 @@ jobs:
 
           sed -i '1283s/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '1307s/del_timer_sync/timer_delete_sync/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1426s/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '3349s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '3350s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
