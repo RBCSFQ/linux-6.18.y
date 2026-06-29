@@ -20,8 +20,25 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
+
+          sed -i '1283s/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '1307s/del_timer_sync/timer_delete_sync/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '1426s/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3349s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3350s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3351s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3356s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3357s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3358s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3359s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3360s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3361s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i '3370s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+
           make defconfig
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
@@ -33,9 +50,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           mkdir -p modinstall
           make INSTALL_MOD_PATH=./modinstall modules_install
-          echo "=== All .ko files built ==="
-          find modinstall -name "*.ko" | sort
-          echo "=== Collecting WIFI-related modules ==="
+          echo "=== All unisoc/sprd .ko files ==="
+          find modinstall -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" | sort
           mkdir -p output/modules
           cd modinstall/lib/modules/*/kernel/drivers
           find . \( -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" \) | while read f; do
