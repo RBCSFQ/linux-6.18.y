@@ -1,4 +1,4 @@
-name: Compile W132D Kernel + DTB + WIFI Modules
+name: Compile W132D Kernel + DTB
 
 on:
   workflow_dispatch:
@@ -22,32 +22,15 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           make defconfig
-          make -j$(nproc) Image dtbs modules
+          make -j$(nproc) Image dtbs
           ls -la arch/arm64/boot/Image
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
 
-      - name: Install and collect WIFI modules
-        run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          mkdir -p modinstall
-          make INSTALL_MOD_PATH=./modinstall modules_install
-          echo "=== All .ko files built ==="
-          find modinstall -name "*.ko" | sort
-          echo "=== Collecting WIFI-related modules ==="
-          mkdir -p output/modules
-          cd modinstall/lib/modules/*/kernel/drivers
-          find . \( -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" \) | while read f; do
-            mkdir -p "$OLDPWD/../../../../output/modules/$(dirname "$f")"
-            cp "$f" "$OLDPWD/../../../../output/modules/$f"
-            echo "  -> $f"
-          done
-
       - name: Package output
         run: |
+          mkdir -p output
           cp arch/arm64/boot/Image output/
           cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
-          ls -laR output/
           cd output && zip -r ../rk3528-w132d-kernel.zip .
 
       - name: Upload artifact
