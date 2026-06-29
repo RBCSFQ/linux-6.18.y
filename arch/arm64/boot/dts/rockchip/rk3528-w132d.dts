@@ -86,19 +86,6 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	vccio_wifi: vccio-wifi {
-		compatible = "regulator-fixed";
-		regulator-name = "vccio_wifi";
-		regulator-always-on;
-		regulator-boot-on;
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		enable-active-high;
-		gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
-		vin-supply = <&vcc_3v3_s3>;
-		startup-delay-us = <10000>;
-	};
-
 	io-domains {
 		compatible = "rockchip,rk3528-pmu-io-domain";
 		vccio1-supply = <&vcc5v0_sys>;
@@ -116,8 +103,28 @@
 		reg = <0x0 0xff300000 0x0 0x90000>;
 	};
 
+	/*
+	 * SDIO power sequence with TWO reset-gpios to force the
+	 * GPIO fallback path in 6.18's pwrseq_simple.c.
+	 *
+	 * In 6.18, if reset-gpios count == 1, it tries reset_control_get
+	 * (which fails on rk3528). With count >= 2, it uses gpiod_get_array.
+	 *
+	 * Both GPIOs are on gpio3 (known working bank):
+	 * - gpio3 RK_PB2 (pin 10): primary reset, ACTIVE_LOW
+	 * - gpio3 RK_PB4 (pin 12): secondary/dummy, ACTIVE_HIGH
+	 */
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>,
+			      <&gpio3 RK_PB4 GPIO_ACTIVE_HIGH>;
+		post-power-on-delay-ms = <1000>;
+		status = "okay";
+	};
+
 	uwe_bsp: uwe-bsp {
 		compatible = "unisoc,uwe_bsp";
+		bt-reg-on = <&gpio3 RK_PC2 GPIO_ACTIVE_HIGH>;
 		pub-int-gpio = <&gpio3 RK_PB3 GPIO_ACTIVE_HIGH>;
 		sdhci-name = <&sdio1>;
 		unisoc,btwf-file-name = "/lib/firmware/wcnmodem.bin";
@@ -180,12 +187,6 @@
 	status = "okay";
 };
 
-/*
- * SDIO1 — v10: add no-sd, no-mmc, supports-sdio from Android DTS.
- * These tell the MMC core this is SDIO-only and should prevent
- * runtime PM suspension that kills card initialization.
- * Also add rockchip,use-v2-tuning for better signal tuning.
- */
 &sdio1 {
 	/delete-property/ power-domains;
 	max-frequency = <200000000>;
@@ -197,8 +198,8 @@
 	no-sd;
 	no-mmc;
 	supports-sdio;
-	rockchip,use-v2-tuning;
-	vmmc-supply = <&vccio_wifi>;
+	mmc-pwrseq = <&sdio_pwrseq>;
+	vmmc-supply = <&vcc_3v3_s3>;
 	vqmmc-supply = <&vdd_1v8_s3>;
 	sd-uhs-sdr104;
 	status = "okay";
