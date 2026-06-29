@@ -39,6 +39,8 @@ jobs:
           sed -i '3361s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '3370s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
 
+          sed -i '/ccflags-y += -Wno-attribute-warning/a ccflags-y += -Wno-implicit-function-declaration' drivers/net/wireless/unisoc/unisocwifi/Makefile
+
           make defconfig
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
