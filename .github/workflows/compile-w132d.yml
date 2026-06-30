@@ -24,7 +24,10 @@ jobs:
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
 
-          sed -i '1a ccflags-y += -Wno-implicit-function-declaration -Wno-incompatible-pointer-types ccflags-y += -Ddel_timer=timer_delete -Ddel_timer_sync=timer_delete_sync -Dsetup_timer=timer_setup' drivers/net/wireless/unisoc/unisocwifi/Makefile
+          cat >> drivers/net/wireless/unisoc/unisocwifi/Makefile << 'EOF'
+          ccflags-y += -Wno-implicit-function-declaration -Wno-incompatible-pointer-types
+          ccflags-y += -Ddel_timer=timer_delete -Ddel_timer_sync=timer_delete_sync -Dsetup_timer=timer_setup
+          EOF
 
           sed -i '1283s/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
