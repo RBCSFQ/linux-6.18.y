@@ -33,6 +33,12 @@ jobs:
           sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1426s/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
 
+          sed -i '24s/ack_info = (struct sprdwl_tcp_ack_info \*)from_timer(ack_info, t, timer);/ack_info = container_of(t, struct sprdwl_tcp_ack_info, timer);/' drivers/net/wireless/unisoc/unisocwifi/tcp_ack.c
+
+          sed -i '913s/struct rx_ba_node \*ba_node = from_timer(ba_node, t, reorder_timer);/struct rx_ba_node *ba_node = container_of(t, struct rx_ba_node, reorder_timer);/' drivers/net/wireless/unisoc/unisocwifi/reorder.c
+
+          sed -i '703s/struct sprdwl_priv \*priv = from_timer(priv, t, wmmac.wmmac_edcaf_timer);/struct sprdwl_priv *priv = container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer);/' drivers/net/wireless/unisoc/unisocwifi/qos.c
+
           make defconfig
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
