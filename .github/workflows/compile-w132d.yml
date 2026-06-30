@@ -50,12 +50,14 @@ jobs:
           mkdir -p modinstall
           make INSTALL_MOD_PATH=./modinstall modules_install
           echo "=== All unisoc/sprd .ko files ==="
-          find modinstall -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" | sort
+          find modinstall \( -path "*/sprd*" -o -path "*/unisoc*" -o -path "*/wcn*" \) -name "*.ko" | sort
+          KDIR=$(ls -d modinstall/lib/modules/*)
           mkdir -p output/modules
-          cd modinstall/lib/modules/*/kernel/drivers
-          find . \( -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" \) | while read f; do
-            mkdir -p "$OLDPWD/../../../../output/modules/$(dirname "$f")"
-            cp "$f" "$OLDPWD/../../../../output/modules/$f"
+          cd "$KDIR/kernel/drivers"
+          find . \( -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" \) | while read f; do
+            target="$GITHUB_WORKSPACE/output/modules/$(dirname "$f")"
+            mkdir -p "$target"
+            cp "$f" "$target/"
             echo "  -> $f"
           done
 
