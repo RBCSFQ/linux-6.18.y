@@ -32,16 +32,13 @@ jobs:
           sed -i '1283s/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1426s/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-
           sed -i '24s/ack_info = (struct sprdwl_tcp_ack_info \*)from_timer(ack_info, t, timer);/ack_info = container_of(t, struct sprdwl_tcp_ack_info, timer);/' drivers/net/wireless/unisoc/unisocwifi/tcp_ack.c
-
           sed -i '913s/struct rx_ba_node \*ba_node = from_timer(ba_node, t, reorder_timer);/struct rx_ba_node *ba_node = container_of(t, struct rx_ba_node, reorder_timer);/' drivers/net/wireless/unisoc/unisocwifi/reorder.c
-
           sed -i '703s/struct sprdwl_priv \*priv = from_timer(priv, t, wmmac.wmmac_edcaf_timer);/struct sprdwl_priv *priv = container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer);/' drivers/net/wireless/unisoc/unisocwifi/qos.c
-
           find drivers/net/wireless/unisoc -name '*.c' -exec sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/' {} \;
 
           make defconfig
+          sed -i 's/CONFIG_DRM_SUN4I=m/# CONFIG_DRM_SUN4I is not set/' .config
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
