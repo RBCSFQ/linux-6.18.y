@@ -49,7 +49,9 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           mkdir -p modinstall
           make INSTALL_MOD_PATH=./modinstall modules_install
-          cp -r modinstall/lib/modules output/
+          rm -f modinstall/lib/modules/*/build modinstall/lib/modules/*/source
+          mkdir -p output/modules
+          mv modinstall/lib/modules/* output/modules/
 
       - name: Package output
         run: |
