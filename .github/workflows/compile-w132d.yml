@@ -39,6 +39,8 @@ jobs:
 
           sed -i '703s/struct sprdwl_priv \*priv = from_timer(priv, t, wmmac.wmmac_edcaf_timer);/struct sprdwl_priv *priv = container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer);/' drivers/net/wireless/unisoc/unisocwifi/qos.c
 
+          find drivers/net/wireless/unisoc -name '*.c' -exec sed -i 's/^MODULE_IMPORT_NS/\/\/ MODULE_IMPORT_NS/' {} \;
+
           make defconfig
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
