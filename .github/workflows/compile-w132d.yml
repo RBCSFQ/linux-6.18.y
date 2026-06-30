@@ -24,22 +24,12 @@ jobs:
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
 
+          sed -i '1a ccflags-y += -Wno-implicit-function-declaration -Wno-incompatible-pointer-types' drivers/net/wireless/unisoc/unisocwifi/Makefile
+
           sed -i '1283s/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1286s/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
+          sed -i 's/del_timer_sync/timer_delete_sync/g' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
           sed -i '1426s/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3349s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3350s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3351s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3356s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3357s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3358s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3359s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3360s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3361s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-          sed -i '3370s/^\(\t*\.\)/\/\/\1/' drivers/net/wireless/unisoc/unisocwifi/cfg80211.c
-
-          sed -i '/ccflags-y += -Wno-attribute-warning/a ccflags-y += -Wno-implicit-function-declaration' drivers/net/wireless/unisoc/unisocwifi/Makefile
 
           make defconfig
           make -j$(nproc) Image dtbs modules
