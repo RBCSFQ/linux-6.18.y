@@ -25,17 +25,10 @@ jobs:
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c
 
-          # 2. from_timer -> container_of (pattern: from_timer(VAR, t, MEMBER))
-          # cfg80211.c: scan_timer in struct sprdwl_priv
+          # 2. from_timer -> container_of (precise per-file fixes)
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c
-
-          # tcp_ack.c: timer in struct sprdwl_tcp_ack_info
           sed -i 's/from_timer(ack_info, t, timer)/container_of(t, struct sprdwl_tcp_ack_info, timer)/g' $DRV/tcp_ack.c
-
-          # reorder.c: timer in struct sprdwl_tcp_ack_win
-          sed -i 's/from_timer(win, t, timer)/container_of(t, struct sprdwl_tcp_ack_win, timer)/g' $DRV/reorder.c
-
-          # qos.c: timer in struct sprdwl_qos_queue
+          sed -i 's/from_timer(ba_node, t, reorder_timer)/container_of(t, struct rx_ba_node, reorder_timer)/g' $DRV/reorder.c
           sed -i 's/from_timer(qos, t, timer)/container_of(t, struct sprdwl_qos_queue, timer)/g' $DRV/qos.c
 
           # 3. del_timer -> timer_delete, setup_timer -> timer_setup
