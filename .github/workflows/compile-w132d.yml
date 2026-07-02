@@ -16,6 +16,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc
 
+      - name: Fix unisoc WIFI driver API for 6.18
+        run: |
+          DRV=drivers/net/wireless/unisoc/unisocwifi
+          WCN=drivers/net/wireless/unisoc/unisocwcn
+
+          # cfg80211.c: cfg80211_new_sta/del_sta 1st arg vif->ndev -> &vif->wdev
+          sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c
+          sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c
+
+          # cfg80211.c ops struct: change_station/del_station/add_station/get_station/dump_station
+          # 1st arg: net_device -> wireless_dev (replace ndev with wdev in the struct initializers)
+          sed -i '3350s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3351s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3352s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3356s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3357s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3358s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3359s/ndev/wdev/' $DRV/cfg80211.c
+          sed -i '3360s/ndev/wdev/' $DRV/cfg80211.c
+          # set_txq_params: extra params
+          sed -i '3361s/(\&wdev->wiphy, \&wdev->wdev, ac, params)/(\&wdev->wiphy, \&wdev->wdev, ac, 0, params)/' $DRV/cfg80211.c
+          # remain_on_channel: extra arg
+          sed -i '3370s/(\&wdev->wiphy, duration)/(\&wdev->wiphy, 0, duration)/' $DRV/cfg80211.c
+
+          # from_timer -> container_of fixes
+          sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_vif, scan_timer)/g' $DRV/cfg80211.c
+          sed -i 's/from_timer(priv, t, ndev->tcp_ack_timer)/container_of(t, struct sprdwl_vif, tcp_ack_timer)/g' $DRV/tcp_ack.c
+          sed -i 's/from_timer(win, t, timer)/container_of(t, struct sprdwl_tcp_ack_win, timer)/g' $DRV/reorder.c
+          sed -i 's/from_timer(qos, t, timer)/container_of(t, struct sprdwl_qos_queue, timer)/g' $DRV/qos.c
+
+          # del_timer/timer_setup macros
+          for f in $DRV/cfg80211.c $DRV/tcp_ack.c $DRV/reorder.c $DRV/qos.c; do
+            sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' "$f"
+            sed -i 's/\bdel_timer\b/timer_delete/g' "$f"
+            sed -i 's/\bsetup_timer\b/timer_setup/g' "$f"
+          done
+
+          # CONFIG_RK_BOARD for sdiohal
+          echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/platform/sdiohal/Makefile
+
+          # Comment out MODULE_IMPORT_NS lines (VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver etc)
+          find $DRV $WCN -name "*.c" -exec sed -i 's/^MODULE_IMPORT_NS/# MODULE_IMPORT_NS/' {} \;
+
+          echo "=== unisocwifi fixes applied ==="
+
       - name: Prepare kernel config and compile
         run: |
           export ARCH=arm64
