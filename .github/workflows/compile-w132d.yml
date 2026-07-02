@@ -21,6 +21,7 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
+          sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           make defconfig
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
