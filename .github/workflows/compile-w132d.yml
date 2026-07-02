@@ -21,40 +21,39 @@ jobs:
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
 
-          # ---- Approach: global sed fixes + per-directory Wno-error flags ----
-
           # 1. cfg80211_new_sta/del_sta: 1st arg vif->ndev -> &vif->wdev
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c
 
-          # 2. from_timer -> container_of (scan_timer is in struct sprdwl_priv, not sprdwl_vif)
+          # 2. from_timer -> container_of (pattern: from_timer(VAR, t, MEMBER))
+          # cfg80211.c: scan_timer in struct sprdwl_priv
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c
 
-          # 3. from_timer in tcp_ack.c / reorder.c / qos.c
-          sed -i 's/from_timer(priv, t, ndev->tcp_ack_timer)/container_of(t, struct sprdwl_priv, tcp_ack_timer)/g' $DRV/tcp_ack.c
+          # tcp_ack.c: timer in struct sprdwl_tcp_ack_info
+          sed -i 's/from_timer(ack_info, t, timer)/container_of(t, struct sprdwl_tcp_ack_info, timer)/g' $DRV/tcp_ack.c
+
+          # reorder.c: timer in struct sprdwl_tcp_ack_win
           sed -i 's/from_timer(win, t, timer)/container_of(t, struct sprdwl_tcp_ack_win, timer)/g' $DRV/reorder.c
+
+          # qos.c: timer in struct sprdwl_qos_queue
           sed -i 's/from_timer(qos, t, timer)/container_of(t, struct sprdwl_qos_queue, timer)/g' $DRV/qos.c
 
-          # 4. del_timer -> timer_delete, setup_timer -> timer_setup
+          # 3. del_timer -> timer_delete, setup_timer -> timer_setup
           for f in $DRV/cfg80211.c $DRV/tcp_ack.c $DRV/reorder.c $DRV/qos.c; do
             sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' "$f"
             sed -i 's/\bdel_timer\b/timer_delete/g' "$f"
             sed -i 's/\bsetup_timer\b/timer_setup/g' "$f"
           done
 
-          # 5. CONFIG_RK_BOARD for sdiohal
+          # 4. CONFIG_RK_BOARD for sdiohal
           echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/sdio/Makefile
 
-          # 6. Comment out MODULE_IMPORT_NS
+          # 5. Comment out MODULE_IMPORT_NS
           find $DRV $WCN -name "*.c" -exec sed -i 's/^MODULE_IMPORT_NS/# MODULE_IMPORT_NS/' {} \;
 
-          # 7. Nuke -Werror for unisoc drivers (allows incompatible-pointer-types as warnings)
+          # 6. Suppress -Werror for unisoc drivers
           for d in $DRV $WCN/sdio $WCN/platform; do
-            echo 'subdir-ccflags-y := -Wno-error' >> "$d/Makefile" 2>/dev/null || true
-          done
-          # Also blanket suppress implicit-function-declaration
-          for d in $DRV $WCN/sdio $WCN/platform; do
-            echo 'subdir-ccflags-y += -Wno-implicit-function-declaration -Wno-incompatible-pointer-types' >> "$d/Makefile" 2>/dev/null || true
+            echo 'subdir-ccflags-y := -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types' >> "$d/Makefile" 2>/dev/null || true
           done
 
           echo "=== unisocwifi fixes applied ==="
