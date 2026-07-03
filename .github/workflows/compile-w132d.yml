@@ -39,8 +39,6 @@ jobs:
           sed -i 's/\bdel_timer\b/timer_delete/g' $DRV/reorder.c
 
           # ---- qos.c fixes ----
-          # from_timer(priv, t, wmmac.wmmac_edcaf_timer) needs 2-level container_of
-          # Replace the single line with two lines
           sed -i '703s/.*/	struct sprdwl_wmmac_params *__wmmac = container_of(t, struct sprdwl_wmmac_params, wmmac_edcaf_timer);\'$'\n''	struct sprdwl_priv *priv = container_of(__wmmac, struct sprdwl_priv, wmmac);/' $DRV/qos.c
           sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' $DRV/qos.c
           sed -i 's/\bsetup_timer\b/timer_setup/g' $DRV/qos.c
@@ -66,6 +64,7 @@ jobs:
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           make defconfig
+          scripts/config --disable CONFIG_DRM_SUN4I
           make -j$(nproc) Image dtbs modules
           ls -la arch/arm64/boot/Image
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
