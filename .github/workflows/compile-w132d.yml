@@ -73,6 +73,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          WORKDIR=$(pwd)
           mkdir -p modinstall
           make INSTALL_MOD_PATH=./modinstall modules_install
           echo "=== All .ko files built ==="
@@ -81,10 +82,11 @@ jobs:
           mkdir -p output/modules
           cd modinstall/lib/modules/*/kernel/drivers
           find . \( -name "sprd*.ko" -o -name "unisoc*.ko" -o -name "wcn*.ko" -o -name "uwe*.ko" \) | while read f; do
-            mkdir -p "$OLDPWD/../../../../output/modules/$(dirname "$f")"
-            cp "$f" "$OLDPWD/../../../../output/modules/$f"
+            mkdir -p "$WORKDIR/output/modules/$(dirname "$f")"
+            cp "$f" "$WORKDIR/output/modules/$f"
             echo "  -> $f"
           done
+          cd "$WORKDIR"
 
       - name: Package output
         run: |
