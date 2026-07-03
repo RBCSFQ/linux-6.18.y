@@ -66,19 +66,24 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          mkdir -p output/modules
-          make INSTALL_MOD_PATH=./output/modules modules_install
+          mkdir -p modinstall
+          make INSTALL_MOD_PATH=./modinstall modules_install
+          # Remove symlinks that cause recursive zip loops
+          find modinstall -type l -name build -delete
+          find modinstall -type l -name source -delete
           echo "=== Module tree installed ==="
-          ls -la output/modules/lib/modules/
+          ls -la modinstall/lib/modules/
           echo "=== Checking for sprdwl_ng.ko ==="
-          find output/modules -name "sprdwl_ng.ko"
+          find modinstall -name "sprdwl_ng.ko"
           echo "=== Checking metadata files ==="
-          find output/modules/lib/modules/* -maxdepth 1 -name "modules.*"
+          find modinstall/lib/modules/* -maxdepth 1 -type f
 
       - name: Package output
         run: |
+          mkdir -p output
           cp arch/arm64/boot/Image output/
           cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
+          cp -r modinstall/lib output/
           ls -laR output/
           cd output && zip -r ../rk3528-w132d-kernel.zip .
 
