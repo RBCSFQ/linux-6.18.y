@@ -16,6 +16,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc
 
+      - name: Fix DTS GPIOs for W132D (gpio4 -> gpio3)
+        run: |
+          DTS=arch/arm64/boot/dts/rockchip/rk3528-w132d.dts
+          # Replace gpio4 references in uwe_bsp and sdio_pwrseq with gpio3
+          # Only replace within the WIFI-related blocks, not the USB vcc5v0_host (which needs gpio4)
+          sed -i '/uwe_bsp/,/};/s/&gpio4/&gpio3/g' $DTS
+          sed -i '/sdio_pwrseq/,/};/s/&gpio4/&gpio3/g' $DTS
+          sed -i '/wireless_wlan/,/};/s/&gpio4/&gpio3/g' $DTS
+          sed -i '/wireless_bluetooth/,/};/s/&gpio4/&gpio3/g' $DTS
+          echo "=== DTS gpio3 count after fix ==="
+          grep -c 'gpio3' $DTS
+          echo "=== DTS gpio4 count after fix ==="
+          grep -c 'gpio4' $DTS
+          echo "=== uwe_bsp block ==="
+          sed -n '/uwe_bsp/,/};/p' $DTS | head -15
+
       - name: Fix unisoc WIFI driver API for 6.18
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -68,15 +84,12 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           mkdir -p modinstall
           make INSTALL_MOD_PATH=./modinstall modules_install
-          # Remove symlinks that cause recursive zip loops
           find modinstall -type l -name build -delete
           find modinstall -type l -name source -delete
           echo "=== Module tree installed ==="
           ls -la modinstall/lib/modules/
           echo "=== Checking for sprdwl_ng.ko ==="
           find modinstall -name "sprdwl_ng.ko"
-          echo "=== Checking metadata files ==="
-          find modinstall/lib/modules/* -maxdepth 1 -type f
 
       - name: Package output
         run: |
