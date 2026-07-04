@@ -73,12 +73,10 @@ jobs:
       - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
         run: |
           SDIO_INT=drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
-          # Replace the cmd52 fail line with 3 lines: log + atomic_set + usleep
-          # Using 24 spaces for indentation (3 tab stops) to avoid \t escaping issues
-          sed -i '/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);/c\                        SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);\n                        atomic_set(\&sdio_int.chip_power_on, 0);\n                        usleep_range(50000, 100000);' $SDIO_INT
+          # Append atomic_set + usleep after the cmd52 fail log, on the same C line
+          sed -i 's/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret); atomic_set(\&sdio_int.chip_power_on, 0); usleep_range(50000, 100000);/' $SDIO_INT
           echo "=== sdio_int.c fix applied ==="
-          grep -n -A3 "sdio cmd52 fail" $SDIO_INT || true
-
+          grep -n -A2 "sdio cmd52 fail" $SDIO_INT || true
       - name: Prepare kernel config and compile
         run: |
           export ARCH=arm64
