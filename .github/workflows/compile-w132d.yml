@@ -80,6 +80,32 @@ jobs:
 
           echo "=== unisocwifi fixes applied ==="
 
+      - name: Fix sdiohal pwrseq blocking sdio_enable_func
+        run: |
+          # When CONFIG_SDIO_PWRSEQ=y (which is the case for rockchip builds),
+          # sdiohal_probe skips sdio_enable_func(FUNC_1), assuming mmc core 
+          # handles it. But on rk3528 this leaves SDIO func uninitialized.
+          # Fix: force p_data->pwrseq = false on RK board so enable_func runs.
+          SDIOHAL=drivers/net/wireless/unisoc/unisocwcn/sdio/sdiohal_main.c
+          # After the pwrseq parse in sdiohal_parse_dt, force it false for RK
+          sed -i '/p_data->pwrseq = true;/a\tif (IS_ENABLED(CONFIG_RK_BOARD)) p_data->pwrseq = false;' $SDIOHAL
+          # Also fix the probe: ensure func enable even with pwrseq
+          sed -i 's|if (!p_data->pwrseq) {|if (1) { // Force func enable for RK3528|' $SDIOHAL
+          echo "=== sdiohal pwrseq fix applied ==="
+          grep -n -A2 'Force func enable|p_data->pwrseq = false' $SDIOHAL
+
+      - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
+        run: |
+          # In 6.18, when CMD52 fails in pub_int_handle_thread, the IRQ is
+          # unconditionally re-enabled, causing an infinite retry loop that
+          # floods the console and consumes 100% CPU.
+          # Fix: when sprdwcn_bus_aon_readb fails, do NOT re-enable IRQ.
+          sed -i '/sdio cmd52 fail, ret-%d/i\			disable_irq_nosync(sdio_int.pub_int_num);\n			continue;' drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          # More robust fix: replace the unconditional enable_irq with a check
+          sed -i 's|ret = sprdwcn_bus_aon_readb.*sdio cmd52 fail, ret-%d", ret);|&\n\t\t\tatomic_set(\&sdio_int.chip_power_on, 0);|' drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          echo "=== sdio_int.c fix applied ==="
+          grep -n -A2 "sdio cmd52 fail" drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+
       - name: Prepare kernel config and compile
         run: |
           export ARCH=arm64
