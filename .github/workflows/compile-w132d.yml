@@ -19,32 +19,19 @@ jobs:
       - name: Fix DTS GPIOs for W132D (gpio4 -> gpio3)
         run: |
           DTS=arch/arm64/boot/dts/rockchip/rk3528-w132d.dts
-          # Replace gpio4 references in uwe_bsp and sdio_pwrseq with gpio3
-          # Only replace within the WIFI-related blocks, not the USB vcc5v0_host (which needs gpio4)
           sed -i '/uwe_bsp/,/};/s/&gpio4/&gpio3/g' $DTS
           sed -i '/sdio_pwrseq/,/};/s/&gpio4/&gpio3/g' $DTS
           sed -i '/wireless_wlan/,/};/s/&gpio4/&gpio3/g' $DTS
           sed -i '/wireless_bluetooth/,/};/s/&gpio4/&gpio3/g' $DTS
-          echo "=== DTS gpio3 count after fix ==="
-          grep -c 'gpio3' $DTS
-          echo "=== DTS gpio4 count after fix ==="
-          grep -c 'gpio4' $DTS
           echo "=== uwe_bsp block ==="
           sed -n '/uwe_bsp/,/};/p' $DTS | head -15
 
-
       - name: Fix dw_mmc-rockchip runtime PM for SDIO stability
         run: |
-          # The 6.18 rockchip dw_mmc added custom runtime PM callbacks that 
-          # save/restore internal_phase. On rk3528 (which uses rk3288 drv_data),
-          # internal_phase=false so this is a no-op, but the custom callbacks
-          # may still interfere with SDIO timing.
-          # Revert to 6.12-style: use generic dw_mci_runtime_suspend/resume
           sed -i 's/RUNTIME_PM_OPS(dw_mci_rockchip_runtime_suspend, dw_mci_rockchip_runtime_resume, NULL)/RUNTIME_PM_OPS(dw_mci_runtime_suspend, dw_mci_runtime_resume, NULL)/' drivers/mmc/host/dw_mmc-rockchip.c
-          # Also remove the custom shutdown callback which doesn't exist in 6.12
           sed -i '/\.shutdown\t*= dw_mci_rockchip_shutdown,/d' drivers/mmc/host/dw_mmc-rockchip.c
           echo "=== PM ops fix applied ==="
-          grep -n -E 'RUNTIME_PM_OPS|shutdown' drivers/mmc/host/dw_mmc-rockchip.c
+          grep -n -E 'RUNTIME_PM_OPS|shutdown' drivers/mmc/host/dw_mmc-rockchip.c || true
 
       - name: Fix unisoc WIFI driver API for 6.18
         run: |
@@ -65,7 +52,7 @@ jobs:
           sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' $DRV/reorder.c
           sed -i 's/\bdel_timer\b/timer_delete/g' $DRV/reorder.c
 
-          sed -i '703s/.*/	struct sprdwl_wmmac_params *__wmmac = container_of(t, struct sprdwl_wmmac_params, wmmac_edcaf_timer);\'$'\n''	struct sprdwl_priv *priv = container_of(__wmmac, struct sprdwl_priv, wmmac);/' $DRV/qos.c
+          sed -i '703s/.*/	struct sprdwl_wmmac_params *__wmmac = container_of(t, struct sprdwl_wmmac_params, wmmac_edcaf_timer);/'$'\n''	struct sprdwl_priv *priv = container_of(__wmmac, struct sprdwl_priv, wmmac);/' $DRV/qos.c
           sed -i 's/\bdel_timer_sync\b/timer_delete_sync/g' $DRV/qos.c
           sed -i 's/\bsetup_timer\b/timer_setup/g' $DRV/qos.c
           sed -i 's/\bdel_timer\b/timer_delete/g' $DRV/qos.c
@@ -82,29 +69,20 @@ jobs:
 
       - name: Fix sdiohal pwrseq blocking sdio_enable_func
         run: |
-          # When CONFIG_SDIO_PWRSEQ=y (which is the case for rockchip builds),
-          # sdiohal_probe skips sdio_enable_func(FUNC_1), assuming mmc core 
-          # handles it. But on rk3528 this leaves SDIO func uninitialized.
-          # Fix: force p_data->pwrseq = false on RK board so enable_func runs.
           SDIOHAL=drivers/net/wireless/unisoc/unisocwcn/sdio/sdiohal_main.c
-          # After the pwrseq parse in sdiohal_parse_dt, force it false for RK
+          # After pwrseq parse, force false for RK boards so enable_func runs
           sed -i '/p_data->pwrseq = true;/a\tif (IS_ENABLED(CONFIG_RK_BOARD)) p_data->pwrseq = false;' $SDIOHAL
-          # Also fix the probe: ensure func enable even with pwrseq
-          sed -i 's|if (!p_data->pwrseq) {|if (1) { // Force func enable for RK3528|' $SDIOHAL
+          # Force func enable in probe regardless of pwrseq
+          sed -i 's@if (!p_data->pwrseq) {@if (1) { /* Force func enable for RK3528 */@' $SDIOHAL
           echo "=== sdiohal pwrseq fix applied ==="
-          grep -n -A2 'Force func enable|p_data->pwrseq = false' $SDIOHAL
+          grep -n -E 'Force func enable|p_data->pwrseq = false' $SDIOHAL || true
 
       - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
         run: |
-          # In 6.18, when CMD52 fails in pub_int_handle_thread, the IRQ is
-          # unconditionally re-enabled, causing an infinite retry loop that
-          # floods the console and consumes 100% CPU.
-          # Fix: when sprdwcn_bus_aon_readb fails, do NOT re-enable IRQ.
-          sed -i '/sdio cmd52 fail, ret-%d/i\			disable_irq_nosync(sdio_int.pub_int_num);\n			continue;' drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
-          # More robust fix: replace the unconditional enable_irq with a check
-          sed -i 's|ret = sprdwcn_bus_aon_readb.*sdio cmd52 fail, ret-%d", ret);|&\n\t\t\tatomic_set(\&sdio_int.chip_power_on, 0);|' drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          SDIO_INT=drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          sed -i '/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);/a\t\t\tatomic_set(&sdio_int.chip_power_on, 0);\n\t\t\tusleep_range(50000, 100000);' $SDIO_INT
           echo "=== sdio_int.c fix applied ==="
-          grep -n -A2 "sdio cmd52 fail" drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          grep -n -A3 "sdio cmd52 fail" $SDIO_INT || true
 
       - name: Prepare kernel config and compile
         run: |
@@ -126,10 +104,8 @@ jobs:
           make INSTALL_MOD_PATH=./modinstall modules_install
           find modinstall -type l -name build -delete
           find modinstall -type l -name source -delete
-          echo "=== Module tree installed ==="
-          ls -la modinstall/lib/modules/
           echo "=== Checking for sprdwl_ng.ko ==="
-          find modinstall -name "sprdwl_ng.ko"
+          find modinstall -name "sprdwl_ng.ko" -ls || true
 
       - name: Package and verify output
         run: |
@@ -137,13 +113,10 @@ jobs:
           cp -v arch/arm64/boot/Image output/Image
           cp -v arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/rk3528-w132d.dtb
           cp -r modinstall/lib output/
-          echo "=== Top-level output contents ==="
+          echo "=== Top-level output ==="
           ls -la output/
           echo "=== Module tree root ==="
-          ls -la output/lib/modules/
-          echo "=== Verify sprdwl_ng.ko ==="
-          find output -name "sprdwl_ng.ko" -ls
-          # Package everything under output/ into the zip
+          ls output/lib/modules/
           cd output && zip -r ../rk3528-w132d-kernel.zip .
 
       - name: Upload artifact
