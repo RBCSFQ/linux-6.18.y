@@ -63,10 +63,12 @@ jobs:
       - name: Fix sdiohal pwrseq blocking sdio_enable_func
         run: |
           SDIOHAL=drivers/net/wireless/unisoc/unisocwcn/sdio/sdiohal_main.c
-          sed -i '/p_data->pwrseq = true;/a\tif (IS_ENABLED(CONFIG_RK_BOARD)) p_data->pwrseq = false;' $SDIOHAL
-          sed -i 's@if (!p_data->pwrseq) {@if (1) { /* Force func enable for RK3528 */@' $SDIOHAL
+          # Replace p_data->pwrseq = true with false (force func enable for RK)
+          sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* Force func enable for RK3528 *\//' $SDIOHAL
+          # Force func enable in probe regardless of pwrseq value
+          sed -i 's@if (!p_data->pwrseq) {@if (1) { /* Always enable */@' $SDIOHAL
           echo "=== sdiohal pwrseq fix applied ==="
-          grep -n -E 'Force func enable|p_data->pwrseq = false' $SDIOHAL || true
+          grep -n -E 'Force func enable|Always enable|p_data->pwrseq = false' $SDIOHAL || true
 
       - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
         run: |
