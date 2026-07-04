@@ -73,17 +73,9 @@ jobs:
       - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
         run: |
           SDIO_INT=drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
-          python3 -c "
-import re
-with open('$SDIO_INT', 'r') as f:
-    content = f.read()
-# After 'sdio cmd52 fail' log line, insert atomic_set + usleep to stop IRQ loop
-old = 'SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);'
-new = old + '\n\t\t\tatomic_set(&sdio_int.chip_power_on, 0);\n\t\t\tusleep_range(50000, 100000);'
-content = content.replace(old, new)
-with open('$SDIO_INT', 'w') as f:
-    f.write(content)
-"
+          # Replace the cmd52 fail line with 3 lines: log + atomic_set + usleep
+          # Using 24 spaces for indentation (3 tab stops) to avoid \t escaping issues
+          sed -i '/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);/c\                        SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);\n                        atomic_set(\&sdio_int.chip_power_on, 0);\n                        usleep_range(50000, 100000);' $SDIO_INT
           echo "=== sdio_int.c fix applied ==="
           grep -n -A3 "sdio cmd52 fail" $SDIO_INT || true
 
