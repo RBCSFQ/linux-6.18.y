@@ -37,8 +37,8 @@ jobs:
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
-          sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(&vif->wdev,/g' $DRV/cfg80211.c
-          sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(&vif->wdev,/g' $DRV/cfg80211.c
+          sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c
+          sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c
           sed -i 's/from_timer(ack_info, t, timer)/container_of(t, struct sprdwl_tcp_ack_info, timer)/g' $DRV/tcp_ack.c
           sed -i 's/from_timer(ba_node, t, reorder_timer)/container_of(t, struct rx_ba_node, reorder_timer)/g' $DRV/reorder.c
@@ -73,7 +73,17 @@ jobs:
       - name: Fix sdio_int.c infinite IRQ loop on CMD52 failure
         run: |
           SDIO_INT=drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
-          sed -i '/SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);/a\t\t\tatomic_set(&sdio_int.chip_power_on, 0);\n\t\t\tusleep_range(50000, 100000);' $SDIO_INT
+          python3 -c "
+import re
+with open('$SDIO_INT', 'r') as f:
+    content = f.read()
+# After 'sdio cmd52 fail' log line, insert atomic_set + usleep to stop IRQ loop
+old = 'SLP_MGR_INFO("sdio cmd52 fail, ret-%d", ret);'
+new = old + '\n\t\t\tatomic_set(&sdio_int.chip_power_on, 0);\n\t\t\tusleep_range(50000, 100000);'
+content = content.replace(old, new)
+with open('$SDIO_INT', 'w') as f:
+    f.write(content)
+"
           echo "=== sdio_int.c fix applied ==="
           grep -n -A3 "sdio cmd52 fail" $SDIO_INT || true
 
