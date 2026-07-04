@@ -48,8 +48,7 @@ jobs:
           sed -i 's/setup_timer(/timer_setup(/g' $DRV/tcp_ack.c
           sed -i 's/del_timer_sync(/timer_delete_sync(/g' $DRV/reorder.c
           sed -i 's/del_timer(/timer_delete(/g' $DRV/reorder.c
-          sed -i '703s/.*/	struct sprdwl_wmmac_params *__wmmac = container_of(t, struct sprdwl_wmmac_params, wmmac_edcaf_timer);/' $DRV/qos.c
-          sed -i '704s/.*/	struct sprdwl_priv *priv = container_of(__wmmac, struct sprdwl_priv, wmmac);/' $DRV/qos.c
+          sed -i '703s/from_timer(priv, t, wmmac.wmmac_edcaf_timer)/container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer)/' $DRV/qos.c
           sed -i 's/del_timer_sync(/timer_delete_sync(/g' $DRV/qos.c
           sed -i 's/setup_timer(/timer_setup(/g' $DRV/qos.c
           sed -i 's/del_timer(/timer_delete(/g' $DRV/qos.c
