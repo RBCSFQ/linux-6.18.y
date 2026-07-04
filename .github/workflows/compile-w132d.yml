@@ -33,6 +33,43 @@ jobs:
           echo "=== PM ops fix applied ==="
           grep -n -E 'RUNTIME_PM_OPS|shutdown' drivers/mmc/host/dw_mmc-rockchip.c || true
 
+      - name: Fix sdio_int ISR storm and shutdown flood
+        run: |
+          set -e
+          SDIO=drivers/net/wireless/unisoc/unisocwcn/sleep/sdio_int.c
+          python3 - "$SDIO" << 'PYEOF'
+          import sys
+          with open(sys.argv[1], 'r') as f:
+              content = f.read()
+
+          # Fix 1: In sdio_pub_int_poweron, don't enable_irq if probe not done
+          old1 = '\tif (state)\n\t\tenable_irq(sdio_int.pub_int_num);'
+          new1 = ('\tif (state) {\n'
+                  '\t\tif (atomic_read(&sdiohal_get_data()->xmit_start))\n'
+                  '\t\t\tenable_irq(sdio_int.pub_int_num);\n'
+                  '\t}')
+          assert old1 in content, 'Fix 1 pattern not found'
+          content = content.replace(old1, new1)
+
+          # Fix 2: In pub_int_isr, bail if probe not done (no re-enable).
+          # This handles both boot-time and shutdown-time floods.
+          old2 = ('\tdisable_irq_nosync(irq);\n'
+                  '\t/*\n\t * for wifi powersave')
+          new2 = ('\tdisable_irq_nosync(irq);\n'
+                  '\tif (!atomic_read(&sdiohal_get_data()->xmit_start))'
+                  ' { return IRQ_HANDLED; }\n'
+                  '\t/*\n\t * for wifi powersave')
+          assert old2 in content, 'Fix 2 pattern not found'
+          content = content.replace(old2, new2)
+
+          with open(sys.argv[1], 'w') as f:
+              f.write(content)
+          print('Both ISR fixes applied')
+          PYEOF
+          echo "=== ISR fix verification ==="
+          grep -n -A4 'if (state)' $SDIO | head -10
+          grep -n -A4 'disable_irq_nosync' $SDIO | head -10
+
       - name: Fix unisoc WIFI driver API for 6.18
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -62,12 +99,10 @@ jobs:
       - name: Fix sdiohal pwrseq blocking sdio_enable_func
         run: |
           SDIOHAL=drivers/net/wireless/unisoc/unisocwcn/sdio/sdiohal_main.c
-          # Replace p_data->pwrseq = true with false (force func enable for RK)
           sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* Force func enable for RK3528 *\//' $SDIOHAL
-          # Force func enable in probe regardless of pwrseq value
           sed -i 's@if (!p_data->pwrseq) {@if (1) { /* Always enable */@' $SDIOHAL
           echo "=== sdiohal pwrseq fix applied ==="
-          grep -n -E 'Force func enable|Always enable|p_data->pwrseq = false' $SDIOHAL || true
+          grep -n -E 'Always enable|p_data->pwrseq = false' $SDIOHAL || true
 
       - name: Prepare kernel config and compile
         run: |
