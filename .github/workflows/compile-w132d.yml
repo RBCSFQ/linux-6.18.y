@@ -32,6 +32,20 @@ jobs:
           echo "=== uwe_bsp block ==="
           sed -n '/uwe_bsp/,/};/p' $DTS | head -15
 
+
+      - name: Fix dw_mmc-rockchip runtime PM for SDIO stability
+        run: |
+          # The 6.18 rockchip dw_mmc added custom runtime PM callbacks that 
+          # save/restore internal_phase. On rk3528 (which uses rk3288 drv_data),
+          # internal_phase=false so this is a no-op, but the custom callbacks
+          # may still interfere with SDIO timing.
+          # Revert to 6.12-style: use generic dw_mci_runtime_suspend/resume
+          sed -i 's/RUNTIME_PM_OPS(dw_mci_rockchip_runtime_suspend, dw_mci_rockchip_runtime_resume, NULL)/RUNTIME_PM_OPS(dw_mci_runtime_suspend, dw_mci_runtime_resume, NULL)/' drivers/mmc/host/dw_mmc-rockchip.c
+          # Also remove the custom shutdown callback which doesn't exist in 6.12
+          sed -i '/\.shutdown\t*= dw_mci_rockchip_shutdown,/d' drivers/mmc/host/dw_mmc-rockchip.c
+          echo "=== PM ops fix applied ==="
+          grep -n -E 'RUNTIME_PM_OPS|shutdown' drivers/mmc/host/dw_mmc-rockchip.c
+
       - name: Fix unisoc WIFI driver API for 6.18
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -91,13 +105,19 @@ jobs:
           echo "=== Checking for sprdwl_ng.ko ==="
           find modinstall -name "sprdwl_ng.ko"
 
-      - name: Package output
+      - name: Package and verify output
         run: |
           mkdir -p output
-          cp arch/arm64/boot/Image output/
-          cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/
+          cp -v arch/arm64/boot/Image output/Image
+          cp -v arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/rk3528-w132d.dtb
           cp -r modinstall/lib output/
-          ls -laR output/
+          echo "=== Top-level output contents ==="
+          ls -la output/
+          echo "=== Module tree root ==="
+          ls -la output/lib/modules/
+          echo "=== Verify sprdwl_ng.ko ==="
+          find output -name "sprdwl_ng.ko" -ls
+          # Package everything under output/ into the zip
           cd output && zip -r ../rk3528-w132d-kernel.zip .
 
       - name: Upload artifact
