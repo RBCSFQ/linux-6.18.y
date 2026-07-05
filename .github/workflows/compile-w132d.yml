@@ -29,19 +29,18 @@ jobs:
           sed -i 's/RUNTIME_PM_OPS(dw_mci_rockchip_runtime_suspend, dw_mci_rockchip_runtime_resume, NULL)/RUNTIME_PM_OPS(dw_mci_runtime_suspend, dw_mci_runtime_resume, NULL)/' drivers/mmc/host/dw_mmc-rockchip.c
           sed -i '/\.shutdown\t*= dw_mci_rockchip_shutdown,/d' drivers/mmc/host/dw_mmc-rockchip.c
 
-      - name: Replace dw_mmc with 6.12 version (fix SDIO CMD52 timing)
-        run: |
-          curl -o drivers/mmc/host/dw_mmc.c https://raw.githubusercontent.com/RBCSFQ/linux-6.12.y/main/drivers/mmc/host/dw_mmc.c
-          curl -o drivers/mmc/host/dw_mmc.h https://raw.githubusercontent.com/RBCSFQ/linux-6.12.y/main/drivers/mmc/host/dw_mmc.h
-          echo "=== dw_mmc replaced with 6.12 version ==="
-          head -5 drivers/mmc/host/dw_mmc.c
-
-      - name: Patch unisoc drivers
+      - name: Patch unisoc drivers (with diagnostic logging)
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
           SDIOHAL=$WCN/sdio/sdiohal_main.c
           SDIO_INT=$WCN/sleep/sdio_int.c
+
+          # DIAGNOSTIC: Add sdiohal_info before/after sdio_enable_func to time it
+          # Insert timing log before sdio_enable_func
+          sed -i '/ret = sdio_enable_func(p_data->sdio_func\[FUNC_1\]);/i\        sdiohal_info("DIAG: before sdio_enable_func, jiffies=%lu", jiffies);' $SDIOHAL
+          # Insert timing log after set_block_size
+          sed -i '/p_data->sdio_func\[FUNC_1\]->max_blksize = SDIOHAL_BLK_SIZE;/a\        sdiohal_info("DIAG: after sdio_enable_func, jiffies=%lu, ret=%d", jiffies, ret);' $SDIOHAL
 
           # sdio_int.c: ISR guards
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
@@ -80,7 +79,7 @@ jobs:
           done
 
           echo "=== Verification ==="
-          grep -n 'RK3528\|Always enable' $SDIOHAL | head -8
+          grep -n 'DIAG.*sdio_enable_func\|RK3528\|Always enable' $SDIOHAL | head -8
           grep -n 'sdiohal_debug.*wait xmit' $SDIOHAL | head -5
           grep -n -A2 'disable_irq_nosync' $SDIO_INT | head -6
 
@@ -92,9 +91,9 @@ jobs:
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           make defconfig
           scripts/config --disable CONFIG_DRM_SUN4I
-          make -j$(nproc) Image dtbs modules 2>&1 | tail -30
-          ls -la arch/arm64/boot/Image
-          ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb
+          make -j$(nproc) Image dtbs modules 2>&1 | grep -E 'error:|Error:|undefined|implicit|No such|make\[.*\]:' || true
+          ls -la arch/arm64/boot/Image || { echo "Image build FAILED"; exit 1; }
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb || { echo "DTB build FAILED"; exit 1; }
 
       - name: Install full module tree
         run: |
