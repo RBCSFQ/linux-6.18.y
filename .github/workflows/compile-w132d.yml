@@ -29,6 +29,13 @@ jobs:
           sed -i 's/RUNTIME_PM_OPS(dw_mci_rockchip_runtime_suspend, dw_mci_rockchip_runtime_resume, NULL)/RUNTIME_PM_OPS(dw_mci_runtime_suspend, dw_mci_runtime_resume, NULL)/' drivers/mmc/host/dw_mmc-rockchip.c
           sed -i '/\.shutdown\t*= dw_mci_rockchip_shutdown,/d' drivers/mmc/host/dw_mmc-rockchip.c
 
+      - name: Replace dw_mmc with 6.12 version (fix SDIO CMD52 timing)
+        run: |
+          curl -o drivers/mmc/host/dw_mmc.c https://raw.githubusercontent.com/RBCSFQ/linux-6.12.y/main/drivers/mmc/host/dw_mmc.c
+          curl -o drivers/mmc/host/dw_mmc.h https://raw.githubusercontent.com/RBCSFQ/linux-6.12.y/main/drivers/mmc/host/dw_mmc.h
+          echo "=== dw_mmc replaced with 6.12 version ==="
+          head -5 drivers/mmc/host/dw_mmc.c
+
       - name: Patch unisoc drivers
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -40,7 +47,6 @@ jobs:
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
 
           # sdiohal_main.c: suppress "wait xmit_cnt" log spam
-          # Replace sdiohal_info(...wait xmit_cnt...) with sdiohal_debug
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
           sed -i 's/sdiohal_info("%s wait xmit_cnt end/sdiohal_debug("%s wait xmit_cnt end/' $SDIOHAL
 
