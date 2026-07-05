@@ -29,18 +29,42 @@ jobs:
           sed -i 's/RUNTIME_PM_OPS(dw_mci_rockchip_runtime_suspend, dw_mci_rockchip_runtime_resume, NULL)/RUNTIME_PM_OPS(dw_mci_runtime_suspend, dw_mci_runtime_resume, NULL)/' drivers/mmc/host/dw_mmc-rockchip.c
           sed -i '/\.shutdown\t*= dw_mci_rockchip_shutdown,/d' drivers/mmc/host/dw_mmc-rockchip.c
 
-      - name: Patch unisoc drivers (with diagnostic logging)
+      - name: Patch unisoc drivers (with firmware write diagnostics)
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
           SDIOHAL=$WCN/sdio/sdiohal_main.c
           SDIO_INT=$WCN/sleep/sdio_int.c
+          WCNBOOT=$WCN/platform/wcn_boot.c
 
-          # DIAGNOSTIC: Add sdiohal_info before/after sdio_enable_func to time it
-          # Insert timing log before sdio_enable_func
-          sed -i '/ret = sdio_enable_func(p_data->sdio_func\[FUNC_1\]);/i\        sdiohal_info("DIAG: before sdio_enable_func, jiffies=%lu", jiffies);' $SDIOHAL
-          # Insert timing log after set_block_size
-          sed -i '/p_data->sdio_func\[FUNC_1\]->max_blksize = SDIOHAL_BLK_SIZE;/a\        sdiohal_info("DIAG: after sdio_enable_func, jiffies=%lu, ret=%d", jiffies, ret);' $SDIOHAL
+          # ============================================================
+          # DIAGNOSTIC 1: sdiohal_dt_write - log each call
+          # Insert after: unsigned int remainder = len;
+          # This is line 933 in the original source
+          # ============================================================
+          sed -i '/unsigned int remainder = len;/a\        sdiohal_info("DIAG_FW: dt_write enter addr=0x%x len=%u", system_addr, len);' $SDIOHAL
+          # After sdio_release_host, log done
+          sed -i '/sdio_release_host(p_data->sdio_func\[FUNC_1\]);/a\        sdiohal_info("DIAG_FW: dt_write done remainder=%u ret=%d", remainder, ret);' $SDIOHAL
+
+          # ============================================================
+          # DIAGNOSTIC 2: sprdwcn_bus_direct_write_dispack - log progress
+          # Insert after the opening brace of the function body (line 948)
+          # ============================================================
+          sed -i '/static int sprdwcn_bus_direct_write_dispack/,/^{/ { /^{/ a\        WCN_INFO("DIAG_FW: write_dispack enter addr=0x%x buf_size=%zu pkt_max=%zu", addr, buf_size, packet_max_size);
+          }' $WCNBOOT
+          # Log each chunk write (before sprdwcn_bus_direct_write call)
+          sed -i '/ret = sprdwcn_bus_direct_write(addr + offset, kbuf, temp_size);/i\                WCN_INFO("DIAG_FW: chunk offset=%zu temp_size=%zu remain=%zu", offset, temp_size, buf_size - offset);' $WCNBOOT
+          # Log exit at OUT label
+          sed -i '/^OUT:/a\        WCN_INFO("DIAG_FW: write_dispack exit ret=%d offset=%zu/%zu", ret, offset, buf_size);' $WCNBOOT
+
+          # ============================================================
+          # DIAGNOSTIC 3: marlin_firmware_write - log image count
+          # ============================================================
+          sed -i '/for (i = 0; i < combin_img_count; i++) {/a\                        WCN_INFO("DIAG_FW: img[%d] addr=0x%x size=%u", i, imginfoe[i].addr, imginfoe[i].size);' $WCNBOOT
+
+          # ============================================================
+          # Existing fixes (from 5C/5E)
+          # ============================================================
 
           # sdio_int.c: ISR guards
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
@@ -79,9 +103,14 @@ jobs:
           done
 
           echo "=== Verification ==="
-          grep -n 'DIAG.*sdio_enable_func\|RK3528\|Always enable' $SDIOHAL | head -8
-          grep -n 'sdiohal_debug.*wait xmit' $SDIOHAL | head -5
+          echo "--- DIAG in sdiohal_main ---"
+          grep -n 'DIAG_FW.*dt_write' $SDIOHAL | head -10
+          echo "--- DIAG in wcn_boot ---"
+          grep -n 'DIAG_FW' $WCNBOOT | head -10
+          echo "--- ISR guard ---"
           grep -n -A2 'disable_irq_nosync' $SDIO_INT | head -6
+          echo "--- pwrseq/force enable ---"
+          grep -n 'RK3528\|Always enable' $SDIOHAL | head -5
 
       - name: Prepare kernel config and compile
         run: |
