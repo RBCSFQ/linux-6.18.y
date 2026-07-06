@@ -124,6 +124,7 @@ jobs:
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile
           make defconfig
           scripts/config --disable CONFIG_DRM_SUN4I
+          scripts/config --disable CONFIG_MMC_DW_IDMAC
           make -j$(nproc) Image dtbs modules 2>&1 | grep -E 'error:|Error:|undefined|implicit|No such|make\[.*\]:' || true
           ls -la arch/arm64/boot/Image || { echo "Image build FAILED"; exit 1; }
           ls -la arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb || { echo "DTB build FAILED"; exit 1; }
