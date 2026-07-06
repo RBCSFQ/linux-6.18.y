@@ -1,0 +1,71 @@
+name: Compile W132D WIFI Modules for 6.12.41 Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download ophub 6.12.41 kernel source
+        run: |
+          wget -q https://github.com/ophub/fnnas/releases/download/kernel_fnnas/6.12.41-rockchip.tar.gz
+          tar xzf 6.12.41-rockchip.tar.gz
+          ls -la
+          # Find the kernel source directory
+          KDIR=$(find . -maxdepth 2 -name "Makefile" -exec grep -l "VERSION = 6" {} \; | head -1 | xargs dirname)
+          echo "KDIR=$KDIR"
+          echo "KDIR=$KDIR" >> $GITHUB_ENV
+          ls "$KDIR/drivers/net/wireless/unisoc" 2>/dev/null || echo "unisoc not in source tree"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc python3
+
+      - name: Copy unisoc drivers from 6.18 tree if missing in 6.12
+        run: |
+          if [ ! -d "$KDIR/drivers/net/wireless/unisoc" ]; then
+            echo "unisoc drivers not in 6.12.41 source, copying from 6.18 tree"
+            git clone --depth 1 --filter=blob:none --sparse https://github.com/RBCSFQ/linux-6.18.y.git /tmp/linux-6.18
+            cd /tmp/linux-6.18
+            git sparse-checkout set drivers/net/wireless/unisoc
+            cp -r drivers/net/wireless/unisoc "$KDIR/drivers/net/wireless/"
+            cd "$KDIR"
+          fi
+          ls -la "$KDIR/drivers/net/wireless/unisoc/" | head -20
+
+      - name: Prepare config and build modules
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          cd "$KDIR"
+          # Use the config from W132D
+          wget -q -O .config https://raw.githubusercontent.com/RBCSFQ/linux-6.12.y/main/arch/arm64/configs/defconfig 2>/dev/null || make defconfig
+          # Enable unisoc drivers
+          scripts/config --enable CONFIG_WLAN_VENDOR_UNISOC 2>/dev/null || true
+          scripts/config --enable CONFIG_SPRDWL_NG 2>/dev/null || true
+          scripts/config --enable CONFIG_WCN_BOOT 2>/dev/null || true
+          scripts/config --set-val CONFIG_LOCALVERSION "-trim"
+          make -j$(nproc) modules_prepare
+          make -j$(nproc) M=drivers/net/wireless/unisoc modules 2>&1 | tail -40
+          find drivers/net/wireless/unisoc -name "*.ko" -ls
+
+      - name: Package modules
+        run: |
+          cd "$KDIR"
+          mkdir -p output/modules
+          find drivers/net/wireless/unisoc -name "*.ko" | while read f; do
+            dir=$(dirname "$f")
+            mkdir -p "output/modules/$dir"
+            cp "$f" "output/modules/$dir/"
+          done
+          find output -name "*.ko" -ls
+          cd output && zip -r ../rk3528-w132d-612-modules.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk3528-w132d-612-modules
+          path: rk3528-w132d-612-modules.zip
