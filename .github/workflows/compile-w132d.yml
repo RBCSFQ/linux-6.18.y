@@ -37,49 +37,28 @@ jobs:
           SDIO_INT=$WCN/sleep/sdio_int.c
           WCNBOOT=$WCN/platform/wcn_boot.c
 
-          # ============================================================
-          # DIAGNOSTIC 1: sdiohal_dt_write - log each call
-          # Insert after: unsigned int remainder = len;
-          # This is line 933 in the original source
-          # ============================================================
+          # === DIAG: sdiohal_dt_write ===
           sed -i '/unsigned int remainder = len;/a\        sdiohal_info("DIAG_FW: dt_write enter addr=0x%x len=%u", system_addr, len);' $SDIOHAL
-          # After sdio_release_host, log done
           sed -i '/sdio_release_host(p_data->sdio_func\[FUNC_1\]);/a\        sdiohal_info("DIAG_FW: dt_write done remainder=%u ret=%d", remainder, ret);' $SDIOHAL
 
-          # ============================================================
-          # DIAGNOSTIC 2: sprdwcn_bus_direct_write_dispack - log progress
-          # Insert after the opening brace of the function body (line 948)
-          # ============================================================
-          sed -i '/static int sprdwcn_bus_direct_write_dispack/,/^{/ { /^{/ a\        WCN_INFO("DIAG_FW: write_dispack enter addr=0x%x buf_size=%zu pkt_max=%zu", addr, buf_size, packet_max_size);
-          }' $WCNBOOT
-          # Log each chunk write (before sprdwcn_bus_direct_write call)
+          # === DIAG: sprdwcn_bus_direct_write_dispack ===
+          # Entry: anchor on unique variable "kbuf" declaration
+          sed -i '/void \*kbuf = marlin_dev->write_buffer;/a\        WCN_INFO("DIAG_FW: write_dispack enter addr=0x%x buf_size=%zu pkt_max=%zu", addr, buf_size, packet_max_size);' $WCNBOOT
+          # Each chunk: before sprdwcn_bus_direct_write call
           sed -i '/ret = sprdwcn_bus_direct_write(addr + offset, kbuf, temp_size);/i\                WCN_INFO("DIAG_FW: chunk offset=%zu temp_size=%zu remain=%zu", offset, temp_size, buf_size - offset);' $WCNBOOT
-          # Log exit at OUT label
-          sed -i '/^OUT:/a\        WCN_INFO("DIAG_FW: write_dispack exit ret=%d offset=%zu/%zu", ret, offset, buf_size);' $WCNBOOT
+          # Exit: use a unique pattern - the if(ret<0) after OUT: in this specific function
+          # The pattern "dt write error" only appears in *this* OUT block
+          sed -i '/WCN_ERR.*dt write error:%d/i\        WCN_INFO("DIAG_FW: write_dispack exit ret=%d offset=%zu/%zu", ret, offset, buf_size);' $WCNBOOT
 
-          # ============================================================
-          # DIAGNOSTIC 3: marlin_firmware_write - log image count
-          # ============================================================
+          # === DIAG: marlin_firmware_write - log image count ===
           sed -i '/for (i = 0; i < combin_img_count; i++) {/a\                        WCN_INFO("DIAG_FW: img[%d] addr=0x%x size=%u", i, imginfoe[i].addr, imginfoe[i].size);' $WCNBOOT
 
-          # ============================================================
-          # Existing fixes (from 5C/5E)
-          # ============================================================
-
-          # sdio_int.c: ISR guards
+          # === Existing fixes ===
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
-
-          # sdiohal_main.c: suppress "wait xmit_cnt" log spam
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
           sed -i 's/sdiohal_info("%s wait xmit_cnt end/sdiohal_debug("%s wait xmit_cnt end/' $SDIOHAL
-
-          # Force pwrseq=false
           sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* RK3528 *\//' $SDIOHAL
-
-          # Force enable func1
           sed -i 's/if (!p_data->pwrseq) {/if (1) { \/* RK3528 always enable *\//' $SDIOHAL
-
-          # WiFi driver API fixes
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c
@@ -103,13 +82,9 @@ jobs:
           done
 
           echo "=== Verification ==="
-          echo "--- DIAG in sdiohal_main ---"
-          grep -n 'DIAG_FW.*dt_write' $SDIOHAL | head -10
-          echo "--- DIAG in wcn_boot ---"
+          grep -n 'DIAG_FW' $SDIOHAL | head -10
           grep -n 'DIAG_FW' $WCNBOOT | head -10
-          echo "--- ISR guard ---"
           grep -n -A2 'disable_irq_nosync' $SDIO_INT | head -6
-          echo "--- pwrseq/force enable ---"
           grep -n 'RK3528\|Always enable' $SDIOHAL | head -5
 
       - name: Prepare kernel config and compile
