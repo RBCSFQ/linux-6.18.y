@@ -34,18 +34,11 @@ jobs:
           SDIOHAL=$WCN/sdio/sdiohal_main.c
           SDIO_INT=$WCN/sleep/sdio_int.c
 
-          echo "=== Step 1: ISR guard ==="
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
-
-          echo "=== Step 2: Suppress log spam ==="
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
           sed -i 's/sdiohal_info("%s wait xmit_cnt end/sdiohal_debug("%s wait xmit_cnt end/' $SDIOHAL
-
-          echo "=== Step 3: Force pwrseq off for RK3528 ==="
           sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* RK3528 *\//' $SDIOHAL
           sed -i 's/if (!p_data->pwrseq) {/if (1) { \/* RK3528 always enable *\//' $SDIOHAL
-
-          echo "=== Step 4: API compat fixes ==="
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c 2>/dev/null || true
@@ -57,39 +50,15 @@ jobs:
             sed -i 's/\bdel_timer\b/timer_delete/g' "$f" 2>/dev/null || true
           done
           sed -i '703s/from_timer(priv, t, wmmac.wmmac_edcaf_timer)/container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer)/' $DRV/qos.c 2>/dev/null || true
-
-          echo "=== Step 5: RK_BOARD flag ==="
           echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/Makefile
-
-          echo "=== Step 6: Warnings suppression ==="
-          # The 6.12 unisocwifi/Makefile already has: ccflags-y += -Wno-attribute-warning
-          # We need to add -Wno-missing-prototypes and -Wno-error to every Makefile
-          # that compiles .o files under M= build. KCFLAGS and sed on kbuild files
-          # are unreliable for M= external module builds.
-          for d in $DRV $WCN $WCN/sdio $WCN/platform $WCN/sleep; do
-            if [ -f "$d/Makefile" ]; then
-              sed -i '1i ccflags-y += -Wno-error -Wno-missing-prototypes -Wno-unused-function' "$d/Makefile"
-            fi
-          done
-
-          echo "=== Step 7: Remove MODULE_IMPORT_NS ==="
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
 
-          echo "=== Verification ==="
-          head -5 $DRV/Makefile
-          head -5 $WCN/Makefile
-          grep -n 'Wno-error' $DRV/Makefile $WCN/Makefile
-
-      - name: Prepare config and compile unisoc modules
+      - name: Prepare config
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-
-          echo "=== Fix clk build issues ==="
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile 2>/dev/null || true
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
-
-          echo "=== Generate kernel config ==="
           make defconfig
           scripts/config --enable CONFIG_SPARD_WLAN_SUPPORT
           scripts/config --enable CONFIG_RK_WIFI_DEVICE_UWE5621
@@ -101,12 +70,23 @@ jobs:
           scripts/config --set-val CONFIG_LOCALVERSION "-trim"
           scripts/config --disable CONFIG_LOCALVERSION_AUTO
           make -j$(nproc) modules_prepare 2>&1 | tail -5
-
           echo "=== Config check ==="
           grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN_BOOT|LOCALVERSION|WERROR' .config
 
+      - name: Build unisoc modules
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+
+          # CRITICAL: Remove noisy warning flags from kbuild that cause
+          # unisoc driver compilation to fail. These are in KBUILD_CFLAGS
+          # and ccflags-y in Makefiles cannot reliably override them in M= builds.
+          sed -i 's/-Wmissing-declarations/-Wno-missing-declarations/g' scripts/Makefile.extrawarn
+          sed -i 's/-Wmissing-prototypes/-Wno-missing-prototypes/g' scripts/Makefile.extrawarn
+
           echo "=== Building unisoc modules ==="
           make -j$(nproc) M=drivers/net/wireless/unisoc modules 2>&1 | tail -80
+          echo "=== Build exit code: $? ==="
 
           echo "=== Built modules ==="
           find drivers/net/wireless/unisoc -name "*.ko" -ls || echo "NO .ko FILES FOUND"
