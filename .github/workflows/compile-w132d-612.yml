@@ -27,20 +27,25 @@ jobs:
           sed -i '/wireless_wlan/,/};/s/&gpio4/&gpio3/g' $DTS
           sed -i '/wireless_bluetooth/,/};/s/&gpio4/&gpio3/g' $DTS
 
-      - name: Patch unisoc drivers
+      - name: Patch unisoc drivers for 6.12 kernel
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
           SDIOHAL=$WCN/sdio/sdiohal_main.c
           SDIO_INT=$WCN/sleep/sdio_int.c
-          WCNMK=$WCN/Makefile
-          UNIMK=drivers/net/wireless/unisoc/Makefile
 
+          echo "=== Step 1: ISR guard ==="
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
+
+          echo "=== Step 2: Suppress log spam ==="
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
           sed -i 's/sdiohal_info("%s wait xmit_cnt end/sdiohal_debug("%s wait xmit_cnt end/' $SDIOHAL
+
+          echo "=== Step 3: Force pwrseq off for RK3528 ==="
           sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* RK3528 *\//' $SDIOHAL
           sed -i 's/if (!p_data->pwrseq) {/if (1) { \/* RK3528 always enable *\//' $SDIOHAL
+
+          echo "=== Step 4: API compat fixes ==="
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c 2>/dev/null || true
@@ -52,19 +57,39 @@ jobs:
             sed -i 's/\bdel_timer\b/timer_delete/g' "$f" 2>/dev/null || true
           done
           sed -i '703s/from_timer(priv, t, wmmac.wmmac_edcaf_timer)/container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer)/' $DRV/qos.c 2>/dev/null || true
-          echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCNMK
-          # Drop MODULE_IMPORT_NS
+
+          echo "=== Step 5: RK_BOARD flag ==="
+          echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/Makefile
+
+          echo "=== Step 6: Warnings suppression ==="
+          # The 6.12 unisocwifi/Makefile already has: ccflags-y += -Wno-attribute-warning
+          # We need to add -Wno-missing-prototypes and -Wno-error to every Makefile
+          # that compiles .o files under M= build. KCFLAGS and sed on kbuild files
+          # are unreliable for M= external module builds.
+          for d in $DRV $WCN $WCN/sdio $WCN/platform $WCN/sleep; do
+            if [ -f "$d/Makefile" ]; then
+              sed -i '1i ccflags-y += -Wno-error -Wno-missing-prototypes -Wno-unused-function' "$d/Makefile"
+            fi
+          done
+
+          echo "=== Step 7: Remove MODULE_IMPORT_NS ==="
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
-          echo "=== Patches applied ==="
+
+          echo "=== Verification ==="
+          head -5 $DRV/Makefile
+          head -5 $WCN/Makefile
+          grep -n 'Wno-error' $DRV/Makefile $WCN/Makefile
 
       - name: Prepare config and compile unisoc modules
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
+          echo "=== Fix clk build issues ==="
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile 2>/dev/null || true
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
 
+          echo "=== Generate kernel config ==="
           make defconfig
           scripts/config --enable CONFIG_SPARD_WLAN_SUPPORT
           scripts/config --enable CONFIG_RK_WIFI_DEVICE_UWE5621
@@ -72,31 +97,32 @@ jobs:
           scripts/config --enable CONFIG_WCN_BOOT
           scripts/config --disable CONFIG_DRM_SUN4I
           scripts/config --disable CONFIG_WERROR
-
-          make -j$(nproc) olddefconfig 2>&1 | tail -5
+          make -j$(nproc) olddefconfig 2>&1 | tail -3
           scripts/config --set-val CONFIG_LOCALVERSION "-trim"
           scripts/config --disable CONFIG_LOCALVERSION_AUTO
           make -j$(nproc) modules_prepare 2>&1 | tail -5
 
           echo "=== Config check ==="
-          grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN|LOCALVERSION|WERROR' .config
+          grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN_BOOT|LOCALVERSION|WERROR' .config
 
           echo "=== Building unisoc modules ==="
-          # KCFLAGS overrides KBUILD_CFLAGS -Werror that leaks into M= build
-          make -j$(nproc) KCFLAGS="-Wno-error" M=drivers/net/wireless/unisoc modules 2>&1 | tail -80
+          make -j$(nproc) M=drivers/net/wireless/unisoc modules 2>&1 | tail -80
 
           echo "=== Built modules ==="
-          find drivers/net/wireless/unisoc -name "*.ko" -ls
+          find drivers/net/wireless/unisoc -name "*.ko" -ls || echo "NO .ko FILES FOUND"
 
       - name: Package output
         run: |
           mkdir -p output/modules
-          find drivers/net/wireless/unisoc -name "*.ko" | while read f; do
-            dir="$(dirname "$f")"
-            mkdir -p "output/modules/$dir"
-            cp "$f" "output/modules/$dir/"
-          done
-          echo "=== Module count: $(find output/modules -name '*.ko' | wc -l) ==="
+          KO_COUNT=$(find drivers/net/wireless/unisoc -name "*.ko" | wc -l)
+          echo "=== Found ${KO_COUNT} .ko files ==="
+          if [ "${KO_COUNT}" -gt 0 ]; then
+            find drivers/net/wireless/unisoc -name "*.ko" | while read f; do
+              dir="$(dirname "$f")"
+              mkdir -p "output/modules/$dir"
+              cp "$f" "output/modules/$dir/"
+            done
+          fi
           find output/modules -name "*.ko" -ls
           cp arch/arm64/boot/dts/rockchip/rk3528-w132d.dtb output/ 2>/dev/null || true
           cd output && zip -r ../rk3528-w132d-612-modules.zip .
