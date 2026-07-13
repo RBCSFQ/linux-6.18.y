@@ -25,38 +25,21 @@ jobs:
           DTS=$DTS_DIR/rk3528-sy910.dts
           echo "=== DTS first 15 lines (BEFORE) ==="
           head -15 $DTS || { echo "FATAL: DTS not found"; exit 1; }
-
-          # 1. Remove include of non-existent ddr4 dtsi
           sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
-
-          # 2. Remove node refs that do NOT exist in mainline rk3528.dtsi
-          # Verified via compilation: these labels cause "Label or path not found"
           for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop \
                        usb2phy usbdrd30 usbdrd_dwc3 pcie2x1 rng sfc; do
             sed -i '/^&'"$LABEL"' {/,/^};$/d' $DTS
           done
-
-          # 3. Remove downstream-only dtsi includes and nodes
           sed -i '/drm-logo@0 {/,/};$/d' $DTS
           sed -i '/drm-cubic-lut@0 {/,/};$/d' $DTS
           sed -i '/clocks = <&xin24m>;/d' $DTS
-
-          # 4. Fix pinctrl: pcfg_pull_none_schmitt does not exist in mainline
           sed -i 's/pcfg_pull_none_schmitt/pcfg_pull_none/g' $DTS
-
-          # 5. Clean up empty reserved-memory block
           sed -i '/^[\t ]*reserved-memory {$/,/^[\t ]*};$/d' $DTS
-
-          # 6. Register in Makefile
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
-            echo "Adding rk3528-sy910.dtb to Makefile"
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
           echo "=== Makefile ==="
           grep 'rk3528-sy910' $DTS_DIR/Makefile
-
-          echo "=== DTS first 15 lines (AFTER) ==="
-          head -15 $DTS
           echo "=== Remaining label refs ==="
           grep '^&' $DTS || echo "(none)"
 
@@ -100,44 +83,52 @@ jobs:
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
 
           make defconfig
+
+          # Enable full wireless stack first (dependencies), then unisoc
+          scripts/config --enable CONFIG_WIRELESS
+          scripts/config --enable CONFIG_WLAN
+          scripts/config --enable CONFIG_NET
+          scripts/config --module CONFIG_CFG80211
           scripts/config --enable CONFIG_SPARD_WLAN_SUPPORT
           scripts/config --enable CONFIG_RK_WIFI_DEVICE_UWE5621
-          scripts/config --enable CONFIG_SPRDWL_NG
+          scripts/config --module CONFIG_SPRDWL_NG
           scripts/config --enable CONFIG_WCN_BOOT
           scripts/config --disable CONFIG_DRM_SUN4I
           scripts/config --disable CONFIG_WERROR
-          make -j$(nproc) olddefconfig 2>&1 | tail -3
+
+          make -j$(nproc) olddefconfig 2>&1 | tail -5
 
           echo "=== Config check ==="
-          grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN_BOOT|WERROR' .config
+          for sym in WIRELESS WLAN CFG80211 SPARD_WLAN_SUPPORT RK_WIFI_DEVICE_UWE5621 SPRDWL_NG WCN_BOOT WERROR; do
+            val=$(grep "CONFIG_${sym}=" .config 2>/dev/null || echo "NOT SET")
+            echo "CONFIG_${sym}=${val}"
+          done
 
-          # ====== Build DTB first ======
-          echo "=== Build dtbs (full log to /tmp/dtbs.log) ==="
+          # === Build DTB ===
+          echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
           DTBS_EXIT=${PIPESTATUS[0]}
-          echo "dtbs exit code: $DTBS_EXIT"
+          echo "dtbs exit: $DTBS_EXIT"
+          grep -iE 'sy910|error:|fatal' /tmp/dtbs.log || echo "(no errors)"
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
 
-          echo "=== SY910 DTB status ==="
-          grep -iE 'sy910|error:|fatal' /tmp/dtbs.log || echo "(no sy910/error output)"
-
-          if ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null; then
-            echo "SY910 DTB: OK"
-          else
-            echo "SY910 DTB: MISSING"
-            echo "=== All DTC errors ==="
-            grep -i 'error:\|fatal' /tmp/dtbs.log | head -20
-            exit 1
-          fi
-
-          # ====== Build modules ======
+          # === Build modules ===
           echo "=== Build modules ==="
           make -j$(nproc) modules 2>&1 | tail -10
           echo "modules exit: ${PIPESTATUS[0]}"
 
           echo "=== Unisoc .ko files ==="
-          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "None"
+          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
+          KO_COUNT=$(find drivers/net/wireless/unisoc -name "*.ko" 2>/dev/null | wc -l)
+          echo "Unisoc module count: $KO_COUNT"
+          if [ "$KO_COUNT" -eq 0 ]; then
+            echo "=== DEBUG: checking if unisoc is even configured ==="
+            grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_UNISOC' .config || echo "No unisoc config found!"
+            echo "=== DEBUG: Makefile in unisoc ==="
+            cat drivers/net/wireless/unisoc/Makefile
+          fi
 
-          # ====== Build Image ======
+          # === Build Image ===
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
           IMG_EXIT=${PIPESTATUS[0]}
