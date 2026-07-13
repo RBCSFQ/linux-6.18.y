@@ -19,24 +19,47 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc python3
 
-      - name: Fix DTS includes and register in Makefile
+      - name: Fix DTS — remove non-existent includes and unsupported nodes
         run: |
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
-          echo "=== DTS first 10 lines (BEFORE fix) ==="
-          head -10 $DTS || { echo "FATAL: DTS does not exist in repo"; exit 1; }
-          if grep -q 'rk3528-ddr4-lp3-v11' $DTS; then
-            echo "Removing: rk3528-ddr4-lp3-v11.dtsi include"
-            sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
-          fi
-          echo "=== DTS first 10 lines (AFTER fix) ==="
-          head -10 $DTS
+          echo "=== DTS first 15 lines (BEFORE) ==="
+          head -15 $DTS || { echo "FATAL: DTS not found"; exit 1; }
+
+          # 1. Remove include of non-existent ddr4 dtsi
+          sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
+
+          # 2. Remove node references that do NOT exist in mainline rk3528.dtsi
+          # These are downstream-Rockchip labels from Android firmware
+          # We delete from the matching line through the matching closing };
+          for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop \
+                       usb_host0_ehci usb_host0_ohci usb2phy u2phy_host \
+                       usbdrd30 usbdrd_dwc3 u2phy_otg combphy pcie2x1 rng sfc; do
+            # Remove a block: &label { ... };
+            sed -i '/^&'"$LABEL"' {/,/^};$/d' $DTS
+          done
+
+          # 3. Remove reserved-memory nodes that reference rockchip-specific compatibles
+          sed -i '/drm-logo@0 {/,/};$/d' $DTS
+          sed -i '/drm-cubic-lut@0 {/,/};$/d' $DTS
+
+          # 4. Remove xin24m clock reference if it exists (BT node)
+          sed -i '/clocks = <&xin24m>;/d' $DTS
+
+          echo "=== DTS first 15 lines (AFTER) ==="
+          head -15 $DTS
+
+          # 5. Register in Makefile
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
             echo "Adding rk3528-sy910.dtb to Makefile"
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
-          echo "=== Makefile registration ==="
-          grep 'rk3528-sy910' $DTS_DIR/Makefile || echo "WARNING: Not registered"
+          echo "=== Makefile ==="
+          grep 'rk3528-sy910' $DTS_DIR/Makefile
+
+          # Show remaining label references
+          echo "=== Remaining label references ==="
+          grep '^&' $DTS || echo "(none)"
 
       - name: Patch unisoc WiFi drivers for 6.18 API
         run: |
@@ -89,23 +112,23 @@ jobs:
           echo "=== Config check ==="
           grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN_BOOT|WERROR' .config
 
-          # ====== Build DTB first: save full log, grep for sy910 errors ======
-          echo "=== Build dtbs ==="
+          # ====== Build DTB first ======
+          echo "=== Build dtbs (full log to /tmp/dtbs.log) ==="
           make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
           DTBS_EXIT=${PIPESTATUS[0]}
           echo "dtbs exit code: $DTBS_EXIT"
 
-          echo "=== SY910 DTB errors/warnings ==="
-          grep -iE 'sy910|error:|fatal|warning.*rk3528-sy910' /tmp/dtbs.log || echo "(no sy910-specific output found)"
+          echo "=== SY910 DTB status ==="
+          grep -iE 'sy910|error:|fatal' /tmp/dtbs.log || echo "(no sy910/error output)"
 
           if ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null; then
             echo "SY910 DTB: OK"
           else
             echo "SY910 DTB: MISSING"
-            echo "=== Makefile check ==="
-            grep 'rk3528-sy910' arch/arm64/boot/dts/rockchip/Makefile
-            echo "=== Checking DTS syntax ==="
-            cpp -nostdinc -I arch/arm64/boot/dts -I include -undef -x assembler-with-cpp arch/arm64/boot/dts/rockchip/rk3528-sy910.dts 2>&1 | head -20
+            echo "=== All DTC errors ==="
+            grep -i 'error:\|fatal' /tmp/dtbs.log | head -20
+            echo "=== DTS check (first 20 non-empty lines) ==="
+            grep -v '^$' arch/arm64/boot/dts/rockchip/rk3528-sy910.dts | head -20
             exit 1
           fi
 
@@ -120,7 +143,8 @@ jobs:
           # ====== Build Image ======
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
-          echo "Image exit: ${PIPESTATUS[0]}"
+          IMG_EXIT=${PIPESTATUS[0]}
+          echo "Image exit: $IMG_EXIT"
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
           echo "Image: OK"
 
@@ -143,7 +167,7 @@ jobs:
           ls -laR output/
 
           cd output && zip -r ../rk3528-sy910-kernel.zip . 2>/dev/null || true
-          echo "Package created: $(ls -la ../rk3528-sy910-kernel.zip)"
+          echo "Package: $(ls -la ../rk3528-sy910-kernel.zip)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
