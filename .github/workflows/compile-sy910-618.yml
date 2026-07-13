@@ -1,4 +1,4 @@
-name: Compile SY910 WIFI Modules for 6.18 Kernel
+name: Compile SY910 Kernel + WiFi Modules for 6.18
 
 on:
   workflow_dispatch:
@@ -19,16 +19,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc python3
 
-      - name: Register SY910 DTS in Makefile
-        run: |
-          DTSMK=arch/arm64/boot/dts/rockchip/Makefile
-          if ! grep -q 'rk3528-sy910.dtb' $DTSMK; then
-            echo 'dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' >> $DTSMK
-            echo "SY910 DTS registered in Makefile"
-          else
-            echo "SY910 DTS already registered"
-          fi
-
       - name: Patch unisoc drivers
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -36,11 +26,18 @@ jobs:
           SDIOHAL=$WCN/sdio/sdiohal_main.c
           SDIO_INT=$WCN/sleep/sdio_int.c
 
+          echo "=== Step 1: ISR guard ==="
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
+
+          echo "=== Step 2: Suppress log spam ==="
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
           sed -i 's/sdiohal_info("%s wait xmit_cnt end/sdiohal_debug("%s wait xmit_cnt end/' $SDIOHAL
+
+          echo "=== Step 3: Force pwrseq off ==="
           sed -i 's/p_data->pwrseq = true;/p_data->pwrseq = false; \/* RK3528 *\//' $SDIOHAL
           sed -i 's/if (!p_data->pwrseq) {/if (1) { \/* RK3528 always enable *\//' $SDIOHAL
+
+          echo "=== Step 4: API compat ==="
           sed -i 's/cfg80211_new_sta(vif->ndev,/cfg80211_new_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/cfg80211_del_sta(vif->ndev,/cfg80211_del_sta(\&vif->wdev,/g' $DRV/cfg80211.c 2>/dev/null || true
           sed -i 's/from_timer(priv, t, scan_timer)/container_of(t, struct sprdwl_priv, scan_timer)/g' $DRV/cfg80211.c 2>/dev/null || true
@@ -52,23 +49,32 @@ jobs:
             sed -i 's/\bdel_timer\b/timer_delete/g' "$f" 2>/dev/null || true
           done
           sed -i '703s/from_timer(priv, t, wmmac.wmmac_edcaf_timer)/container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer)/' $DRV/qos.c 2>/dev/null || true
+
+          echo "=== Step 5: RK_BOARD flag ==="
           echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/sdio/Makefile
+
+          echo "=== Step 6: Warnings suppress ==="
           for d in $DRV $WCN $WCN/sdio $WCN/platform $WCN/sleep; do
             if [ -f "$d/Makefile" ]; then
               echo 'subdir-ccflags-y := -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types' >> "$d/Makefile" 2>/dev/null || true
             fi
           done
+
+          echo "=== Step 7: Drop MODULE_IMPORT_NS ==="
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
+
           echo "=== Patches applied ==="
 
-      - name: Prepare config and build kernel
+      - name: Prepare config and compile
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
+          echo "=== Fix clk build ==="
           sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile 2>/dev/null || true
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
 
+          echo "=== Generate config ==="
           make defconfig
           scripts/config --enable CONFIG_SPARD_WLAN_SUPPORT
           scripts/config --enable CONFIG_RK_WIFI_DEVICE_UWE5621
@@ -78,26 +84,31 @@ jobs:
           scripts/config --disable CONFIG_WERROR
           make -j$(nproc) olddefconfig 2>&1 | tail -3
           make -j$(nproc) modules_prepare 2>&1 | tail -5
+
           echo "=== Config check ==="
           grep -E 'SPARD_WLAN|RK_WIFI|SPRDWL|WCN_BOOT|WERROR' .config
 
-          echo "=== Build attempt 1/3: Image ==="
+          echo "=== Verify DTS is registered ==="
+          grep 'rk3528-sy910' arch/arm64/boot/dts/rockchip/Makefile || echo "WARNING: DTS not in Makefile!"
+
+          echo "=== Build: Image ==="
           make -j$(nproc) Image 2>&1 | grep -E 'error:|Error |make\[' || true
-          echo "Image build done, exit: $?"
-          ls -la arch/arm64/boot/Image 2>/dev/null || echo "Image MISSING"
+          echo "Image exit: $?"
+          ls -la arch/arm64/boot/Image || echo "Image MISSING"
 
-          echo "=== Build attempt 2/3: dtbs ==="
+          echo "=== Build: dtbs ==="
           make -j$(nproc) dtbs 2>&1 | grep -E 'error:|Error |make\[' || true
-          echo "dtbs build done, exit: $?"
-          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null || echo "SY910 DTB MISSING"
+          echo "dtbs exit: $?"
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb || echo "SY910 DTB MISSING"
 
-          echo "=== Build attempt 3/3: modules ==="
+          echo "=== Build: modules ==="
           make -j$(nproc) modules 2>&1 | grep -E 'error:|Error |make\[' || true
-          echo "modules build done, exit: $?"
+          echo "modules exit: $?"
 
-          echo "=== Built modules ==="
-          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NO UNISOC MODULES"
-          find . -name "*.ko" -path "*/unisoc/*" -ls 2>/dev/null || echo "NO UNISOC MODULES (deep)"
+          echo "=== Unisoc modules found ==="
+          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null
+          find . -name "*.ko" -path "*/unisoc/*" -ls 2>/dev/null
+          echo "=== All .ko count: $(find . -name '*.ko' | wc -l) ==="
 
       - name: Package output
         run: |
@@ -112,10 +123,20 @@ jobs:
           echo "=== Module count: ${KO_COUNT} ==="
           find output/modules -name "*.ko" -ls 2>/dev/null
 
-          cp arch/arm64/boot/Image output/ 2>/dev/null && echo "Image packaged" || echo "Image MISSING"
-          cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/ 2>/dev/null && echo "DTB packaged" || echo "DTB MISSING"
-          ls -la output/
+          if [ -f arch/arm64/boot/Image ]; then
+            cp arch/arm64/boot/Image output/ && echo "Image packaged"
+          else
+            echo "Image MISSING"
+          fi
 
+          if [ -f arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb ]; then
+            cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/ && echo "DTB packaged"
+          else
+            echo "DTB MISSING"
+          fi
+
+          echo "=== Output contents ==="
+          ls -laR output/
           cd output && zip -r ../rk3528-sy910-kernel.zip . 2>/dev/null || true
           echo "Package done"
 
