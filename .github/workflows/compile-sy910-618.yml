@@ -23,7 +23,6 @@ jobs:
         run: |
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
-          echo "=== DTS first 15 lines (BEFORE) ==="
           head -15 $DTS || { echo "FATAL: DTS not found"; exit 1; }
           sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
           for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop \
@@ -38,9 +37,8 @@ jobs:
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
-          echo "=== Makefile ==="
           grep 'rk3528-sy910' $DTS_DIR/Makefile
-          echo "=== Remaining label refs ==="
+          echo "=== Label refs ==="
           grep '^&' $DTS || echo "(none)"
 
       - name: Patch unisoc WiFi drivers for 6.18 API
@@ -84,32 +82,36 @@ jobs:
 
           make defconfig
 
-          # Enable full wireless stack first (dependencies), then unisoc
+          # Enable wireless stack
           scripts/config --enable CONFIG_WIRELESS
           scripts/config --enable CONFIG_WLAN
-          scripts/config --enable CONFIG_NET
           scripts/config --module CONFIG_CFG80211
-          scripts/config --enable CONFIG_SPARD_WLAN_SUPPORT
-          scripts/config --enable CONFIG_RK_WIFI_DEVICE_UWE5621
-          scripts/config --module CONFIG_SPRDWL_NG
-          scripts/config --enable CONFIG_WCN_BOOT
           scripts/config --disable CONFIG_DRM_SUN4I
           scripts/config --disable CONFIG_WERROR
+          make -j$(nproc) olddefconfig 2>&1 | tail -3
 
-          make -j$(nproc) olddefconfig 2>&1 | tail -5
+          # === DIRECTLY inject unisoc config (Kconfig may not source them) ===
+          # These symbols are defined in drivers/net/wireless/unisoc/Kconfig
+          # but may not be properly sourced by the main Kconfig tree
+          echo "" >> .config
+          echo "# === Unisoc UWE5621DS WiFi ===" >> .config
+          echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
+          echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
+          echo "CONFIG_SPRDWL_NG=m" >> .config
+          echo "CONFIG_WCN_BOOT=y" >> .config
+          echo "CONFIG_TTY_OVERY_SDIO=n" >> .config
+          
+          # Convert to include/autoconf.h format
+          make -j$(nproc) modules_prepare 2>&1 | tail -3
 
-          echo "=== Config check ==="
-          for sym in WIRELESS WLAN CFG80211 SPARD_WLAN_SUPPORT RK_WIFI_DEVICE_UWE5621 SPRDWL_NG WCN_BOOT WERROR; do
-            val=$(grep "CONFIG_${sym}=" .config 2>/dev/null || echo "NOT SET")
-            echo "CONFIG_${sym}=${val}"
-          done
+          echo "=== Unisoc config verification ==="
+          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN_BOOT|CONFIG_CFG80211|CONFIG_WIRELESS' .config || echo "MISSING!"
 
           # === Build DTB ===
           echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
           DTBS_EXIT=${PIPESTATUS[0]}
           echo "dtbs exit: $DTBS_EXIT"
-          grep -iE 'sy910|error:|fatal' /tmp/dtbs.log || echo "(no errors)"
           ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
 
           # === Build modules ===
@@ -118,14 +120,17 @@ jobs:
           echo "modules exit: ${PIPESTATUS[0]}"
 
           echo "=== Unisoc .ko files ==="
-          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
           KO_COUNT=$(find drivers/net/wireless/unisoc -name "*.ko" 2>/dev/null | wc -l)
+          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
           echo "Unisoc module count: $KO_COUNT"
+
           if [ "$KO_COUNT" -eq 0 ]; then
-            echo "=== DEBUG: checking if unisoc is even configured ==="
-            grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_UNISOC' .config || echo "No unisoc config found!"
-            echo "=== DEBUG: Makefile in unisoc ==="
-            cat drivers/net/wireless/unisoc/Makefile
+            echo "=== DEBUG ==="
+            echo "Kconfig source chain:"
+            grep -r "source.*unisoc" drivers/net/wireless/Kconfig 2>/dev/null || echo "No unisoc source in Kconfig!"
+            echo "Makefile:"
+            cat drivers/net/wireless/unisoc/Makefile 2>/dev/null || echo "No Makefile!"
+            exit 1
           fi
 
           # === Build Image ===
@@ -151,9 +156,7 @@ jobs:
           cp arch/arm64/boot/Image output/ && echo "Image packaged" || echo "Image MISSING"
           cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/ && echo "DTB packaged" || echo "DTB MISSING"
 
-          echo "=== Final output ==="
           ls -laR output/
-
           cd output && zip -r ../rk3528-sy910-kernel.zip . 2>/dev/null || true
           echo "Package: $(ls -la ../rk3528-sy910-kernel.zip)"
 
