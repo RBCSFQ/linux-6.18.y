@@ -186,36 +186,14 @@
 
 /* === CPU / GPU === */
 
-&cpu0 {
-        cpu-supply = <&vdd_cpu>;
-};
 
-&gpu {
-        mali-supply = <&vdd_logic>;
-        status = "okay";
-};
 
 /* === Display === */
 
-&display_subsystem {
-        status = "okay";
-};
 
-&vop {
-        status = "okay";
-};
 
-&vop_mmu {
-        status = "okay";
-};
 
-&hdmi {
-        status = "okay";
-};
 
-&hdmi_in_vop {
-        status = "okay";
-};
 
 /* === Ethernet (GMAC1 only, GMAC0 disabled) === */
 
@@ -246,48 +224,16 @@
 
 /* === USB === */
 
-&usb_host0_ehci {
-        status = "okay";
-};
 
-&usb_host0_ohci {
-        status = "okay";
-};
 
-&usb2phy {
-        status = "okay";
-};
 
-&u2phy_host {
-        phy-supply = <&vcc5v0_host>;
-        status = "okay";
-};
 
-&usbdrd30 {
-        status = "okay";
-};
 
-&usbdrd_dwc3 {
-        dr_mode = "host";
-        status = "okay";
-};
 
-&u2phy_otg {
-        phy-supply = <&vcc5v0_host>;
-        status = "okay";
-};
 
-&combphy {
-        status = "okay";
-};
 
 /* === PCIe === */
 
-&pcie2x1 {
-        reset-gpios = <&gpio4 16 GPIO_ACTIVE_HIGH>;
-        vpcie3v3-supply = <&vcc_3v3_s3>;
-        status = "okay";
-};
 
 /* === eMMC / SD / SDIO === */
 
@@ -417,13 +363,7 @@
 
 /* === Other === */
 
-&rng {
-        status = "okay";
-};
 
-&sfc {
-        status = "disabled";
-};
 
 &tsadc {
         status = "okay";
