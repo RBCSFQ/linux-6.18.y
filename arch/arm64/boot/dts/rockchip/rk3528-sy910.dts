@@ -1,9 +1,8 @@
-﻿// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+?// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 
 /dts-v1/;
 
 #include "rk3528.dtsi"
-#include "rk3528-ddr4-lp3-v11.dtsi"
 
 / {
         model = "XuanYing SY910 (HDMI Fixed)";
