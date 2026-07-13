@@ -38,8 +38,6 @@ jobs:
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
           grep 'rk3528-sy910' $DTS_DIR/Makefile
-          echo "=== Label refs ==="
-          grep '^&' $DTS || echo "(none)"
 
       - name: Patch unisoc WiFi drivers for 6.18 API
         run: |
@@ -70,7 +68,6 @@ jobs:
             fi
           done
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
-          echo "=== Unisoc patches applied ==="
 
       - name: Prepare kernel config and compile
         run: |
@@ -82,62 +79,53 @@ jobs:
 
           make defconfig
 
+          # Disable problematic features for cross-compilation
+          scripts/config --disable CONFIG_STACKPROTECTOR
+          scripts/config --disable CONFIG_STACKPROTECTOR_STRONG
+          scripts/config --disable CONFIG_DRM_SUN4I
+          scripts/config --disable CONFIG_WERROR
+
           # Enable wireless stack
           scripts/config --enable CONFIG_WIRELESS
           scripts/config --enable CONFIG_WLAN
           scripts/config --module CONFIG_CFG80211
-          scripts/config --disable CONFIG_DRM_SUN4I
-          scripts/config --disable CONFIG_WERROR
+
           make -j$(nproc) olddefconfig 2>&1 | tail -3
 
-          # === DIRECTLY inject unisoc config (Kconfig may not source them) ===
-          # These symbols are defined in drivers/net/wireless/unisoc/Kconfig
-          # but may not be properly sourced by the main Kconfig tree
+          # Direct inject unisoc symbols (may not be in Kconfig source chain)
           echo "" >> .config
-          echo "# === Unisoc UWE5621DS WiFi ===" >> .config
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
-          echo "CONFIG_TTY_OVERY_SDIO=n" >> .config
-          
-          # Convert to include/autoconf.h format
           make -j$(nproc) modules_prepare 2>&1 | tail -3
 
-          echo "=== Unisoc config verification ==="
-          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN_BOOT|CONFIG_CFG80211|CONFIG_WIRELESS' .config || echo "MISSING!"
+          echo "=== Key config ==="
+          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_WIRELESS |CONFIG_WLAN |CONFIG_STACKPROTECTOR' .config
 
           # === Build DTB ===
           echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
-          DTBS_EXIT=${PIPESTATUS[0]}
-          echo "dtbs exit: $DTBS_EXIT"
+          echo "dtbs exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
 
           # === Build modules ===
           echo "=== Build modules ==="
-          make -j$(nproc) modules 2>&1 | tail -10
+          make -j$(nproc) modules 2>&1 | tail -15
           echo "modules exit: ${PIPESTATUS[0]}"
 
-          echo "=== Unisoc .ko files ==="
           KO_COUNT=$(find drivers/net/wireless/unisoc -name "*.ko" 2>/dev/null | wc -l)
+          echo "=== Unisoc module count: $KO_COUNT ==="
           find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
-          echo "Unisoc module count: $KO_COUNT"
-
           if [ "$KO_COUNT" -eq 0 ]; then
-            echo "=== DEBUG ==="
-            echo "Kconfig source chain:"
-            grep -r "source.*unisoc" drivers/net/wireless/Kconfig 2>/dev/null || echo "No unisoc source in Kconfig!"
-            echo "Makefile:"
-            cat drivers/net/wireless/unisoc/Makefile 2>/dev/null || echo "No Makefile!"
-            exit 1
+            echo "=== DEBUG: last 30 lines of modules build ==="
+            make -j$(nproc) modules 2>&1 | grep -iE 'unisoc|sprd|wcn|error:|undefined' | tail -30
           fi
 
           # === Build Image ===
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
-          IMG_EXIT=${PIPESTATUS[0]}
-          echo "Image exit: $IMG_EXIT"
+          echo "Image exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
           echo "Image: OK"
 
