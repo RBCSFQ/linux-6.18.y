@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc python3
 
-      - name: Fix DTS — remove non-existent includes and unsupported nodes
+      - name: Fix DTS — remove non-mainline nodes and fix pinctrl
         run: |
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
@@ -29,27 +29,25 @@ jobs:
           # 1. Remove include of non-existent ddr4 dtsi
           sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
 
-          # 2. Remove node references that do NOT exist in mainline rk3528.dtsi
-          # These are downstream-Rockchip labels from Android firmware
-          # We delete from the matching line through the matching closing };
+          # 2. Remove node refs that do NOT exist in mainline rk3528.dtsi
+          # Verified via compilation: these labels cause "Label or path not found"
           for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop \
-                       usb_host0_ehci usb_host0_ohci usb2phy u2phy_host \
-                       usbdrd30 usbdrd_dwc3 u2phy_otg combphy pcie2x1 rng sfc; do
-            # Remove a block: &label { ... };
+                       usb2phy usbdrd30 usbdrd_dwc3 pcie2x1 rng sfc; do
             sed -i '/^&'"$LABEL"' {/,/^};$/d' $DTS
           done
 
-          # 3. Remove reserved-memory nodes that reference rockchip-specific compatibles
+          # 3. Remove downstream-only dtsi includes and nodes
           sed -i '/drm-logo@0 {/,/};$/d' $DTS
           sed -i '/drm-cubic-lut@0 {/,/};$/d' $DTS
-
-          # 4. Remove xin24m clock reference if it exists (BT node)
           sed -i '/clocks = <&xin24m>;/d' $DTS
 
-          echo "=== DTS first 15 lines (AFTER) ==="
-          head -15 $DTS
+          # 4. Fix pinctrl: pcfg_pull_none_schmitt does not exist in mainline
+          sed -i 's/pcfg_pull_none_schmitt/pcfg_pull_none/g' $DTS
 
-          # 5. Register in Makefile
+          # 5. Clean up empty reserved-memory block
+          sed -i '/^[\t ]*reserved-memory {$/,/^[\t ]*};$/d' $DTS
+
+          # 6. Register in Makefile
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
             echo "Adding rk3528-sy910.dtb to Makefile"
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
@@ -57,8 +55,9 @@ jobs:
           echo "=== Makefile ==="
           grep 'rk3528-sy910' $DTS_DIR/Makefile
 
-          # Show remaining label references
-          echo "=== Remaining label references ==="
+          echo "=== DTS first 15 lines (AFTER) ==="
+          head -15 $DTS
+          echo "=== Remaining label refs ==="
           grep '^&' $DTS || echo "(none)"
 
       - name: Patch unisoc WiFi drivers for 6.18 API
@@ -127,8 +126,6 @@ jobs:
             echo "SY910 DTB: MISSING"
             echo "=== All DTC errors ==="
             grep -i 'error:\|fatal' /tmp/dtbs.log | head -20
-            echo "=== DTS check (first 20 non-empty lines) ==="
-            grep -v '^$' arch/arm64/boot/dts/rockchip/rk3528-sy910.dts | head -20
             exit 1
           fi
 
