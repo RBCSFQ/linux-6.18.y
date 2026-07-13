@@ -224,13 +224,30 @@
 
 /* === USB === */
 
+&usb_host0_ehci {
+        status = "okay";
+};
+
+&usb_host0_ohci {
+        status = "okay";
+};
+
+
+&u2phy_host {
+        phy-supply = <&vcc5v0_host>;
+        status = "okay";
+};
 
 
 
+&u2phy_otg {
+        phy-supply = <&vcc5v0_host>;
+        status = "okay";
+};
 
-
-
-
+&combphy {
+        status = "okay";
+};
 
 /* === PCIe === */
 
@@ -328,7 +345,7 @@
 
         sdio-pwrseq {
                 wifi_enable_h: wifi-enable-h {
-                        rockchip,pins = <3 RK_PB2 RK_FUNC_GPIO &pcfg_pull_none_schmitt>;
+                        rockchip,pins = <3 RK_PB2 RK_FUNC_GPIO &pcfg_pull_none>;
                 };
         };
 
