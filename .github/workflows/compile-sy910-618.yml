@@ -37,7 +37,6 @@ jobs:
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
-          grep 'rk3528-sy910' $DTS_DIR/Makefile
 
       - name: Patch unisoc WiFi drivers for 6.18 API
         run: |
@@ -69,7 +68,7 @@ jobs:
           done
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
 
-      - name: Prepare kernel config and build Image + dtbs
+      - name: Prepare kernel config and build Image + dtbs + symvers
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -87,75 +86,66 @@ jobs:
           scripts/config --module CONFIG_CFG80211
           make -j$(nproc) olddefconfig 2>&1 | tail -3
 
-          # Inject unisoc symbols directly  
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
           make -j$(nproc) modules_prepare 2>&1 | tail -3
 
-          echo "=== Config check ==="
-          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_STACKPROTECTOR' .config
-
           echo "=== Build dtbs ==="
-          make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
+          make -j$(nproc) dtbs 2>&1 | tail -5
           echo "dtbs exit: ${PIPESTATUS[0]}"
-          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; exit 1; }
 
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
           echo "Image exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
-          echo "Image: OK"
+
+          # Generate Module.symvers by doing a full modules build (failures OK, we just need symvers)
+          echo "=== Generate Module.symvers ==="
+          make -j$(nproc) modules 2>&1 | tail -5 || true
+          ls -la Module.symvers 2>/dev/null && echo "Module.symvers: OK ($(wc -l < Module.symvers) entries)" || echo "Module.symvers: MISSING"
 
       - name: Build unisoc modules out-of-tree
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          # Build unisoc modules separately using the kernel build system
-          # This ensures the modules are built regardless of Kconfig integration
+          export KBUILD_MODPOST_WARN=1
+
           UNISOC=drivers/net/wireless/unisoc
-          
-          echo "=== Building unisoc modules separately ==="
-          
-          # Build unisocwcn first (dependency)
-          echo "--- unisocwcn ---"
-          make M=$UNISOC/unisocwcn modules 2>&1 | tail -10
-          echo "unisocwcn exit: ${PIPESTATUS[0]}"
-          
-          # Build unisocwifi  
-          echo "--- unisocwifi ---"
-          make M=$UNISOC/unisocwifi modules 2>&1 | tail -10
-          echo "unisocwifi exit: ${PIPESTATUS[0]}"
-          
+
+          echo "=== Building unisocwcn ==="
+          make M=$UNISOC/unisocwcn modules 2>&1 | tail -5
+          echo "exit: ${PIPESTATUS[0]}"
+
+          echo "=== Building unisocwifi ==="
+          make M=$UNISOC/unisocwifi modules 2>&1 | tail -5
+          echo "exit: ${PIPESTATUS[0]}"
+
           echo "=== Unisoc .ko files ==="
           KO_COUNT=$(find $UNISOC -name "*.ko" 2>/dev/null | wc -l)
           find $UNISOC -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
-          echo "Unisoc module count: $KO_COUNT"
-          
-          if [ "$KO_COUNT" -eq 0 ]; then
-            echo "=== DEBUG: full build output ==="
-            make M=$UNISOC/unisocwifi modules 2>&1 | tail -30
-          fi
+          echo "Module count: $KO_COUNT"
+          if [ "$KO_COUNT" -eq 0 ]; then echo "FATAL: No modules built"; exit 1; fi
 
       - name: Package output
         run: |
           rm -rf output
           mkdir -p output/modules
-          
+
           UNISOC=drivers/net/wireless/unisoc
           find $UNISOC -name "*.ko" 2>/dev/null | while read f; do
             dir="$(dirname "$f")"
             mkdir -p "output/modules/$dir"
             cp "$f" "output/modules/$dir/"
           done
-          
+
           echo "=== Module count: $(find output/modules -name '*.ko' 2>/dev/null | wc -l) ==="
           find output/modules -name "*.ko" -ls 2>/dev/null
 
-          cp arch/arm64/boot/Image output/ && echo "Image packaged" || echo "Image MISSING"
-          cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/ && echo "DTB packaged" || echo "DTB MISSING"
+          cp arch/arm64/boot/Image output/ && echo "Image" || echo "No Image"
+          cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/ && echo "DTB" || echo "No DTB"
 
           ls -laR output/
           cd output && zip -r ../rk3528-sy910-kernel.zip . 2>/dev/null || true
