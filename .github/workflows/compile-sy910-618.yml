@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu flex bison bc python3
 
-      - name: Fix DTS — remove non-mainline nodes and fix pinctrl
+      - name: Fix DTS
         run: |
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
@@ -69,7 +69,7 @@ jobs:
           done
           find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
 
-      - name: Prepare kernel config and compile
+      - name: Prepare kernel config and build Image + dtbs
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -78,66 +78,79 @@ jobs:
           sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
 
           make defconfig
-
-          # Disable problematic features for cross-compilation
           scripts/config --disable CONFIG_STACKPROTECTOR
           scripts/config --disable CONFIG_STACKPROTECTOR_STRONG
           scripts/config --disable CONFIG_DRM_SUN4I
           scripts/config --disable CONFIG_WERROR
-
-          # Enable wireless stack
           scripts/config --enable CONFIG_WIRELESS
           scripts/config --enable CONFIG_WLAN
           scripts/config --module CONFIG_CFG80211
-
           make -j$(nproc) olddefconfig 2>&1 | tail -3
 
-          # Direct inject unisoc symbols (may not be in Kconfig source chain)
-          echo "" >> .config
+          # Inject unisoc symbols directly  
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
           make -j$(nproc) modules_prepare 2>&1 | tail -3
 
-          echo "=== Key config ==="
-          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_WIRELESS |CONFIG_WLAN |CONFIG_STACKPROTECTOR' .config
+          echo "=== Config check ==="
+          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_STACKPROTECTOR' .config
 
-          # === Build DTB ===
           echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tee /tmp/dtbs.log | tail -5
           echo "dtbs exit: ${PIPESTATUS[0]}"
-          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { grep -i 'error:\|fatal' /tmp/dtbs.log | head -20; exit 1; }
 
-          # === Build modules ===
-          echo "=== Build modules ==="
-          make -j$(nproc) modules 2>&1 | tail -15
-          echo "modules exit: ${PIPESTATUS[0]}"
-
-          KO_COUNT=$(find drivers/net/wireless/unisoc -name "*.ko" 2>/dev/null | wc -l)
-          echo "=== Unisoc module count: $KO_COUNT ==="
-          find drivers/net/wireless/unisoc -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
-          if [ "$KO_COUNT" -eq 0 ]; then
-            echo "=== DEBUG: last 30 lines of modules build ==="
-            make -j$(nproc) modules 2>&1 | grep -iE 'unisoc|sprd|wcn|error:|undefined' | tail -30
-          fi
-
-          # === Build Image ===
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
           echo "Image exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
           echo "Image: OK"
 
+      - name: Build unisoc modules out-of-tree
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          
+          # Build unisoc modules separately using the kernel build system
+          # This ensures the modules are built regardless of Kconfig integration
+          UNISOC=drivers/net/wireless/unisoc
+          
+          echo "=== Building unisoc modules separately ==="
+          
+          # Build unisocwcn first (dependency)
+          echo "--- unisocwcn ---"
+          make M=$UNISOC/unisocwcn modules 2>&1 | tail -10
+          echo "unisocwcn exit: ${PIPESTATUS[0]}"
+          
+          # Build unisocwifi  
+          echo "--- unisocwifi ---"
+          make M=$UNISOC/unisocwifi modules 2>&1 | tail -10
+          echo "unisocwifi exit: ${PIPESTATUS[0]}"
+          
+          echo "=== Unisoc .ko files ==="
+          KO_COUNT=$(find $UNISOC -name "*.ko" 2>/dev/null | wc -l)
+          find $UNISOC -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
+          echo "Unisoc module count: $KO_COUNT"
+          
+          if [ "$KO_COUNT" -eq 0 ]; then
+            echo "=== DEBUG: full build output ==="
+            make M=$UNISOC/unisocwifi modules 2>&1 | tail -30
+          fi
+
       - name: Package output
         run: |
           rm -rf output
           mkdir -p output/modules
-          find . -name "*.ko" -path "*/unisoc/*" 2>/dev/null | while read f; do
+          
+          UNISOC=drivers/net/wireless/unisoc
+          find $UNISOC -name "*.ko" 2>/dev/null | while read f; do
             dir="$(dirname "$f")"
             mkdir -p "output/modules/$dir"
             cp "$f" "output/modules/$dir/"
           done
+          
           echo "=== Module count: $(find output/modules -name '*.ko' 2>/dev/null | wc -l) ==="
           find output/modules -name "*.ko" -ls 2>/dev/null
 
