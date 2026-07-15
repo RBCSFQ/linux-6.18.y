@@ -1,4 +1,4 @@
-﻿name: Compile SY910 Kernel + WiFi for 6.18.18-trim
+name: Compile SY910 Kernel + WiFi for 6.18.18-trim
 
 on:
   workflow_dispatch:
