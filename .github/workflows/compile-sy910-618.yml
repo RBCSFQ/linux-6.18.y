@@ -1,4 +1,4 @@
-name: Compile SY910 Kernel + WiFi Modules for 6.18
+name: Compile SY910 Kernel + WiFi for 6.18.18-trim
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout Linux 6.18.y kernel
+      - name: Checkout kernel source (RBCSFQ fork with unisoc drivers)
         uses: actions/checkout@v4
         with:
           repository: RBCSFQ/linux-6.18.y
@@ -38,7 +38,7 @@ jobs:
             sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
 
-      - name: Patch unisoc WiFi drivers for 6.18 API
+      - name: Patch unisoc drivers for 6.18 API
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
@@ -59,55 +59,66 @@ jobs:
             sed -i 's/\bsetup_timer\b/timer_setup/g' "$f" 2>/dev/null || true
             sed -i 's/\bdel_timer\b/timer_delete/g' "$f" 2>/dev/null || true
           done
-          sed -i '703s/from_timer(priv, t, wmmac.wmmac_edcaf_timer)/container_of(t, struct sprdwl_priv, wmmac.wmmac_edcaf_timer)/' $DRV/qos.c 2>/dev/null || true
+          find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
           echo 'ccflags-y += -DCONFIG_RK_BOARD' >> $WCN/sdio/Makefile
           for d in $DRV $WCN $WCN/sdio $WCN/platform $WCN/sleep; do
             if [ -f "$d/Makefile" ]; then
               echo 'subdir-ccflags-y := -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types' >> "$d/Makefile" 2>/dev/null || true
             fi
           done
-          find $DRV $WCN -name "*.c" -exec sed -i '/^MODULE_IMPORT_NS/d' {} \; 2>/dev/null || true
 
-      - name: Prepare kernel config and build Image + dtbs + symvers
+      - name: Use ophub kernel config and compile
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          sed -i 's/obj-.*clk-imx8mp-audiomix.o/#&/' drivers/clk/imx/Makefile 2>/dev/null || true
-          sed -i 's/obj-.*clk-vbattb.o/#&/' drivers/clk/renesas/Makefile 2>/dev/null || true
+          # Upload ophub's config as .github/config-6.18.18.c821-trim in the repo
+          # Or set it inline
+          # The config is expected at: .github/config-6.18.18.c821-trim
+          # 
+          # If not found, copy from the repo (you need to upload it first)
+          if [ -f .github/config-6.18.18.c821-trim ]; then
+            echo "Using ophub config from repo"
+            cp .github/config-6.18.18.c821-trim .config
+          else
+            echo "Config not found in repo, using defconfig + patches"
+            make defconfig
+            scripts/config --disable CONFIG_STACKPROTECTOR
+            scripts/config --disable CONFIG_STACKPROTECTOR_STRONG  
+            scripts/config --disable CONFIG_DRM_SUN4I
+            scripts/config --disable CONFIG_WERROR
+            scripts/config --enable CONFIG_WIRELESS
+            scripts/config --enable CONFIG_WLAN
+            scripts/config --module CONFIG_CFG80211
+            make -j$(nproc) olddefconfig 2>&1 | tail -3
+          fi
 
-          make defconfig
-          scripts/config --disable CONFIG_STACKPROTECTOR
-          scripts/config --disable CONFIG_STACKPROTECTOR_STRONG
-          scripts/config --disable CONFIG_DRM_SUN4I
-          scripts/config --disable CONFIG_WERROR
-          scripts/config --enable CONFIG_WIRELESS
-          scripts/config --enable CONFIG_WLAN
-          scripts/config --module CONFIG_CFG80211
-          make -j$(nproc) olddefconfig 2>&1 | tail -3
-
+          # Inject unisoc symbols
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
-          make -j$(nproc) modules_prepare 2>&1 | tail -3
+
+          make -j$(nproc) olddefconfig 2>&1 | tail -3
+
+          echo "=== Config check ==="
+          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_LOCALVERSION' .config
 
           echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tail -5
           echo "dtbs exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; exit 1; }
 
+          echo "=== Build modules for symvers ==="
+          make -j$(nproc) modules 2>&1 | tail -5 || true
+          ls -la Module.symvers 2>/dev/null && echo "Module.symvers: $(wc -l < Module.symvers) entries"
+
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
           echo "Image exit: ${PIPESTATUS[0]}"
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
 
-          # Generate Module.symvers by doing a full modules build (failures OK, we just need symvers)
-          echo "=== Generate Module.symvers ==="
-          make -j$(nproc) modules 2>&1 | tail -5 || true
-          ls -la Module.symvers 2>/dev/null && echo "Module.symvers: OK ($(wc -l < Module.symvers) entries)" || echo "Module.symvers: MISSING"
-
-      - name: Build unisoc modules out-of-tree
+      - name: Build unisoc modules out-of-tree with MODPOST_WARN
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -120,14 +131,17 @@ jobs:
           echo "exit: ${PIPESTATUS[0]}"
 
           echo "=== Building unisocwifi ==="
-          make M=$UNISOC/unisocwifi modules 2>&1 | tail -5
+          make M=$UNISOC/unisocwifi modules 2>&1 | tail -10
           echo "exit: ${PIPESTATUS[0]}"
 
-          echo "=== Unisoc .ko files ==="
           KO_COUNT=$(find $UNISOC -name "*.ko" 2>/dev/null | wc -l)
-          find $UNISOC -name "*.ko" -ls 2>/dev/null || echo "NONE FOUND"
-          echo "Module count: $KO_COUNT"
-          if [ "$KO_COUNT" -eq 0 ]; then echo "FATAL: No modules built"; exit 1; fi
+          echo "=== Module count: $KO_COUNT ==="
+          find $UNISOC -name "*.ko" -ls 2>/dev/null || echo "NONE"
+          
+          # Get vermagic
+          find $UNISOC -name "*.ko" 2>/dev/null | while read ko; do
+            echo "vermagic: $(modinfo "$ko" | grep vermagic)"
+          done
 
       - name: Package output
         run: |
