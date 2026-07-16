@@ -67,7 +67,7 @@ jobs:
             fi
           done
 
-      - name: Configure and build (match ophub ABI-critical options)
+      - name: Configure (ophub config) and build Image + dtbs
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -76,45 +76,32 @@ jobs:
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = -trim/' Makefile
           head -5 Makefile
 
-          # Start from defconfig, then match ophub ABI-critical options
-          make defconfig
+          # Use ophub config AS-IS
+          cp .github/config-6.18.18.c821-trim .config
 
-          # Disable stuff that breaks cross-compilation
-          scripts/config --disable CONFIG_DRM_SUN4I
-
-          # Enable wireless
-          scripts/config --enable CONFIG_WIRELESS
-          scripts/config --enable CONFIG_WLAN
-          scripts/config --module CONFIG_CFG80211
-
-          # Match ophub ABI: STACKPROTECTOR must match running kernel
-          scripts/config --enable CONFIG_STACKPROTECTOR
-          scripts/config --enable CONFIG_STACKPROTECTOR_STRONG
-
-          make -j$(nproc) olddefconfig 2>&1 | tail -3
-
-          # Inject unisoc
+          # Inject unisoc symbols
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
+
           make -j$(nproc) olddefconfig 2>&1 | tail -3
 
-          echo "=== Key config ==="
-          grep -E 'CONFIG_SPARD|CONFIG_RK_WIFI|CONFIG_SPRDWL|CONFIG_WCN|CONFIG_CFG80211 |CONFIG_STACKPROTECTOR|CONFIG_LOCALVERSION' .config
+          echo "=== LOCLVERSION_AUTO/STACKPROTECTOR ==="
+          grep -E 'CONFIG_LOCALVERSION|CONFIG_STACKPROTECTOR' .config
 
           echo "=== Build dtbs ==="
           make -j$(nproc) dtbs 2>&1 | tail -5
           ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb && echo "DTB OK" || { echo "DTB MISSING"; exit 1; }
 
-          echo "=== Build modules (generate Module.symvers) ==="
-          # Allow failures - we just need symvers for cfg80211 symbols
-          make -j$(nproc) modules 2>&1 | tail -5 || true
-          ls -la Module.symvers 2>/dev/null && echo "Symvers: $(wc -l < Module.symvers)" || echo "WARNING: No symvers"
-
           echo "=== Build Image ==="
           make -j$(nproc) Image 2>&1 | tail -5
           ls -la arch/arm64/boot/Image || { echo "FATAL: Image MISSING"; exit 1; }
+
+          # Build ONLY cfg80211 to generate Module.symvers with wireless symbols
+          echo "=== Build cfg80211 for symvers ==="
+          make -j$(nproc) M=net/wireless modules 2>&1 | tail -10 || true
+          ls -la Module.symvers 2>/dev/null && echo "Symvers: $(wc -l < Module.symvers)" || echo "WARNING: No symvers"
 
       - name: Build unisoc modules
         run: |
