@@ -77,13 +77,15 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
+          # Stage all changes and commit to make git tree clean (prevents + suffix)
+
           sed -i 's/^SUBLEVEL = .*/SUBLEVEL = 18/' Makefile
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = .c821-trim/' Makefile
-          # Prevent scripts/setlocalversion from appending '+' to vermagic
           # Override the script to always return clean (no suffix)
-          printf '#!/bin/sh\necho' > scripts/setlocalversion
-          chmod +x scripts/setlocalversion
+          
           head -5 Makefile
+
+          git add -A && git commit -m "Apply patches for SY910 build" || true
 
           cp .github/config-6.18.18.c821-trim .config
 
@@ -185,10 +187,3 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
-
-
-
-
-
-
-
