@@ -146,7 +146,7 @@ jobs:
             modinfo "$ko" | grep -E "vermagic|depends|filename|license"
           done
 
-          [ "$KO_COUNT" -eq 0 ] && { echo "FATAL: No modules produced"; exit 1; }
+          [ "$KO_COUNT" -eq 0 ] && { echo "FATAL: No modules produced"; exit 1; }; true
 
       - name: Build Image and DTB
         run: |
@@ -181,6 +181,7 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
 
 
 
