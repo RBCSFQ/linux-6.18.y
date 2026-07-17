@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies (GCC 12 to match ophub)
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-12-aarch64-linux-gnu flex bison bc dwarves pahole
+          sudo apt-get install -y gcc-12-aarch64-linux-gnu flex bison bc dwarves pahole libelf-dev
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-12 100
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-ar aarch64-linux-gnu-gcc-ar /usr/bin/aarch64-linux-gnu-gcc-ar-12 100
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-nm aarch64-linux-gnu-gcc-nm /usr/bin/aarch64-linux-gnu-gcc-nm-12 100
@@ -181,4 +181,6 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
+
 
