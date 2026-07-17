@@ -79,6 +79,10 @@ jobs:
 
           sed -i 's/^SUBLEVEL = .*/SUBLEVEL = 18/' Makefile
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = .c821-trim/' Makefile
+          # Prevent scripts/setlocalversion from appending '+' to vermagic
+          # Override the script to always return clean (no suffix)
+          printf '#!/bin/sh\necho' > scripts/setlocalversion
+          chmod +x scripts/setlocalversion
           head -5 Makefile
 
           cp .github/config-6.18.18.c821-trim .config
@@ -181,6 +185,9 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
+
+
 
 
 
