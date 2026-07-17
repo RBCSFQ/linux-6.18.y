@@ -1,4 +1,4 @@
-﻿name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v4)
+name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v4)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies (GCC 12 to match ophub)
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-12-aarch64-linux-gnu flex bison bc
+          sudo apt-get install -y gcc-12-aarch64-linux-gnu flex bison bc dwarves pahole
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-12 100
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-ar aarch64-linux-gnu-gcc-ar /usr/bin/aarch64-linux-gnu-gcc-ar-12 100
           sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-nm aarch64-linux-gnu-gcc-nm /usr/bin/aarch64-linux-gnu-gcc-nm-12 100
@@ -30,8 +30,7 @@ jobs:
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
           sed -i '/rk3528-ddr4-lp3-v11/d' $DTS
-          for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop \
-                       usb2phy usbdrd30 usbdrd_dwc3 pcie2x1 rng sfc; do
+          for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop usb2phy usbdrd30 usbdrd_dwc3 pcie2x1 rng sfc; do
             sed -i '/^&'"$LABEL"' {/,/^};$/d' $DTS
           done
           sed -i '/drm-logo@0 {/,/};$/d' $DTS
@@ -40,7 +39,7 @@ jobs:
           sed -i 's/pcfg_pull_none_schmitt/pcfg_pull_none/g' $DTS
           sed -i '/^[\t ]*reserved-memory {$/,/^[\t ]*};$/d' $DTS
           if ! grep -q 'rk3528-sy910.dtb' $DTS_DIR/Makefile; then
-            sed -i '/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
+            sed -i '/^dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb' $DTS_DIR/Makefile
           fi
 
       - name: Patch unisoc drivers
@@ -78,15 +77,12 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # Match ophub version string
           sed -i 's/^SUBLEVEL = .*/SUBLEVEL = 18/' Makefile
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = .c821-trim/' Makefile
           head -5 Makefile
 
-          # Use ophub's exact .config
           cp .github/config-6.18.18.c821-trim .config
 
-          # Inject unisoc symbols
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_RK_WIFI_DEVICE_UWE5621=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
@@ -97,15 +93,12 @@ jobs:
           echo "=== Key config ==="
           grep -E 'LOCALVERSION|SPARD|SPRDWL|WCN|MODVERSIONS|MODULE_SIG|STACKPROTECTOR' .config
 
-          echo "=== Building vmlinux (needed for Module.symvers) ==="
-          # Build only vmlinux (no modules) to generate proper symbol table for modpost
-          # This produces the exact struct module layout matching the config
+          echo "=== Building vmlinux ==="
           make -j$(nproc) vmlinux 2>&1 | tail -20
 
-          echo "=== vmlinux status ==="
-          ls -la vmlinux 2>/dev/null && echo "vmlinux built OK" || { echo "vmlinux build FAILED"; exit 1; }
+          ls -la vmlinux && echo "vmlinux built OK" || { echo "vmlinux build FAILED"; exit 1; }
 
-          echo "=== modules_prepare + scripts ==="
+          echo "=== modules_prepare ==="
           make -j$(nproc) modules_prepare 2>&1 | tail -8
 
       - name: Build cfg80211 in-tree (populate Module.symvers)
@@ -113,32 +106,20 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          echo "=== Building cfg80211 in-tree to generate Module.symvers ==="
-          # cfg80211 depends on rfkill and other wireless stack symbols
-          # Building it in-tree after vmlinux generates correct Module.symvers entries
+          echo "=== Building cfg80211 in-tree ==="
           make -j$(nproc) M=net/wireless modules KBUILD_MODPOST_WARN=1 2>&1 | tail -20 || true
 
-          echo "=== Checking for Module.symvers ==="
           if [ -f Module.symvers ]; then
-            SYM_COUNT=$(wc -l < Module.symvers)
-            echo "Module.symvers generated: $SYM_COUNT entries"
-            grep cfg80211 Module.symvers | head -5 || echo "(no cfg80211 symvers entries)"
+            echo "Module.symvers entries: $(wc -l < Module.symvers)"
           else
-            echo "CRITICAL: Module.symvers not generated"
-            # Try building a broader set of modules to get symvers populated
-            echo "=== Trying broader module build ==="
+            echo "Retrying with broader module build..."
             make -j$(nproc) M=net modules KBUILD_MODPOST_WARN=1 2>&1 | tail -10 || true
             if [ -f Module.symvers ]; then
-              echo "Module.symvers entries after broader build: $(wc -l < Module.symvers)"
+              echo "Module.symvers entries: $(wc -l < Module.symvers)"
             else
-              echo "Still no Module.symvers. Building all modules with warnings allowed..."
+              echo "Retrying with full modules build..."
               make -j$(nproc) modules KBUILD_MODPOST_WARN=1 2>&1 | tail -15 || true
-              if [ -f Module.symvers ]; then
-                echo "Module.symvers entries: $(wc -l < Module.symvers)"
-              else
-                echo "FATAL: Cannot generate Module.symvers"
-                exit 1
-              fi
+              [ -f Module.symvers ] && echo "Module.symvers entries: $(wc -l < Module.symvers)" || { echo "FATAL"; exit 1; }
             fi
           fi
 
@@ -148,12 +129,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           UNISOC=drivers/net/wireless/unisoc
 
-          echo "=== Module.symvers status ==="
-          if [ -f Module.symvers ]; then
-            echo "Entries: $(wc -l < Module.symvers)"
-          else
-            echo "WARNING: No Module.symvers"
-          fi
+          echo "Module.symvers entries: $(wc -l < Module.symvers 2>/dev/null || echo 0)"
 
           echo "=== unisocwcn ==="
           make M=$UNISOC/unisocwcn modules KBUILD_MODPOST_WARN=1 2>&1 | tail -5 || true
@@ -170,10 +146,7 @@ jobs:
             modinfo "$ko" | grep -E "vermagic|depends|filename|license"
           done
 
-          if [ "$KO_COUNT" -eq 0 ]; then
-            echo "FATAL: No modules produced"
-            exit 1
-          fi
+          [ "$KO_COUNT" -eq 0 ] && { echo "FATAL: No modules produced"; exit 1; }
 
       - name: Build Image and DTB
         run: |
@@ -208,3 +181,4 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
