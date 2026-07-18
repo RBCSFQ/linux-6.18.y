@@ -139,7 +139,12 @@ jobs:
           echo "Module.symvers entries: $(wc -l < Module.symvers 2>/dev/null || echo 0)"
 
           echo "=== unisocwcn ==="
-          make M=$UNISOC/unisocwcn modules KBUILD_MODPOST_WARN=1 2>&1 | tail -5 || true
+          # The unisocwcn Makefile uses make variables (not Kconfig) to select
+          # sub-modules. Pass them explicitly to override the top-level Makefile logic.
+          make M=$UNISOC/unisocwcn modules KBUILD_MODPOST_WARN=1 \
+            CONFIG_WCN_SDIO=y CONFIG_WCN_BOOT=m CONFIG_WCN_SLP=m \
+            CONFIG_SDIOHAL=m CONFIG_WCN_PLATFORM=m \
+            2>&1 | tail -10 || true
 
           echo "=== unisocwifi ==="
           make M=$UNISOC/unisocwifi modules KBUILD_MODPOST_WARN=1 2>&1 | tail -20 || true
@@ -189,6 +194,9 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
+
+
 
 
 
