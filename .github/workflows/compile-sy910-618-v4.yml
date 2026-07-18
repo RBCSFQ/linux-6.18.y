@@ -47,6 +47,16 @@ jobs:
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
           SDIOHAL=$WCN/sdio/sdiohal_main.c
+
+          # Fix sched_setscheduler -> sched_set_fifo (ophub kernel lacks EXPORT_SYMBOL)
+          sed -i ''s/sched_setscheduler(current, SCHED_FIFO, \&param);/sched_set_fifo(current);/'' $WCN/sdio/sdiohal_tx.c
+          sed -i ''s/sched_setscheduler(current, SCHED_FIFO, \&param);/sched_set_fifo(current);/'' $WCN/sdio/sdiohal_rx.c
+          # Also remove the now-unused struct sched_param declarations
+          sed -i ''/struct sched_param param;/d'' $WCN/sdio/sdiohal_tx.c
+          sed -i ''/struct sched_param param;/d'' $WCN/sdio/sdiohal_rx.c
+          # Remove the param.sched_priority assignments
+          sed -i ''/param\.sched_priority = SDIO_TX_TASK_PRIO;/d'' $WCN/sdio/sdiohal_tx.c
+          sed -i ''/param\.sched_priority = SDIO_RX_TASK_PRIO;/d'' $WCN/sdio/sdiohal_rx.c
           SDIO_INT=$WCN/sleep/sdio_int.c
           sed -i '/disable_irq_nosync(irq);/a\        if (!atomic_read(\&sdiohal_get_data()->xmit_start)) { return IRQ_HANDLED; }' $SDIO_INT
           sed -i 's/sdiohal_info("%s wait xmit_cnt:%d/sdiohal_debug("%s wait xmit_cnt:%d/' $SDIOHAL
