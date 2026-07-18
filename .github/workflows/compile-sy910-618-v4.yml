@@ -77,15 +77,15 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
-          # Stage all changes and commit to make git tree clean (prevents + suffix)
-
           sed -i 's/^SUBLEVEL = .*/SUBLEVEL = 18/' Makefile
           sed -i 's/^EXTRAVERSION =.*/EXTRAVERSION = .c821-trim/' Makefile
-          # Override the script to always return clean (no suffix)
-          
           head -5 Makefile
 
-          git add -A && git commit -m "Apply patches for SY910 build" || true
+          # Suppress the + suffix from setlocalversion
+          # setlocalversion appends + when git is dirty; LOCALVERSION="" overrides
+          export LOCALVERSION=""
+
+
 
           cp .github/config-6.18.18.c821-trim .config
 
@@ -106,11 +106,11 @@ jobs:
 
           echo "=== modules_prepare ==="
           make -j$(nproc) modules_prepare 2>&1 | tail -8
-
       - name: Build cfg80211 in-tree (populate Module.symvers)
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
 
           echo "=== Building cfg80211 in-tree ==="
           make -j$(nproc) M=net/wireless modules KBUILD_MODPOST_WARN=1 2>&1 | tail -20 || true
@@ -133,6 +133,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
           UNISOC=drivers/net/wireless/unisoc
 
           echo "Module.symvers entries: $(wc -l < Module.symvers 2>/dev/null || echo 0)"
@@ -158,6 +159,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
           make -j$(nproc) Image dtbs 2>&1 | tail -10
           ls -la arch/arm64/boot/Image || { echo "Image build FAILED"; exit 1; }
           ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb || { echo "DTB build FAILED"; exit 1; }
@@ -187,3 +189,25 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: rk3528-sy910-wifi-modules.zip
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
