@@ -90,9 +90,11 @@ jobs:
           cp .github/config-6.18.18.c821-trim .config
 
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
-          echo "# CONFIG_RK_WIFI_DEVICE_UWE5621 is not set" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
+
+          # Disable UWE5621 built-in (will compile as module later)
+          scripts/config --disable CONFIG_RK_WIFI_DEVICE_UWE5621
 
           make olddefconfig 2>&1 | tail -5
 
