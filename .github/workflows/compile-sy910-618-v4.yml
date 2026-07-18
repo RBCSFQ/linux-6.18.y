@@ -87,14 +87,25 @@ jobs:
 
 
 
+          # Remove "select RK_WIFI_DEVICE_UWE5621" from Kconfig to allow disabling it
+          # SPARD_WLAN_SUPPORT=y force-selects UWE5621=y, preventing module build
+          KCONFIG_FILE=drivers/net/wireless/unisoc/Kconfig
+          sed -i '/select RK_WIFI_DEVICE_UWE5621/d' $KCONFIG_FILE
+          grep -n "UWE5621\|SPARD" $KCONFIG_FILE
+
+          # Also fix unisocwcn/Kconfig: change "bool" to "tristate" for UWE5621
+          # This allows =m to work properly (bool configs reject =m silently)
+          WCN_KCONFIG=drivers/net/wireless/unisoc/unisocwcn/Kconfig
+          sed -i 's/bool "Rockchip UWE5621 BSP Support"/tristate "Rockchip UWE5621 BSP Support"/' $WCN_KCONFIG
+          grep "UWE5621\|tristate" $WCN_KCONFIG
+
           cp .github/config-6.18.18.c821-trim .config
 
           echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
           echo "CONFIG_SPRDWL_NG=m" >> .config
           echo "CONFIG_WCN_BOOT=y" >> .config
 
-          # Disable UWE5621 built-in (will compile as module later)
-          scripts/config --disable CONFIG_RK_WIFI_DEVICE_UWE5621
+          echo "# CONFIG_RK_WIFI_DEVICE_UWE5621 is not set" >> .config
 
           make olddefconfig 2>&1 | tail -5
 
@@ -142,7 +153,7 @@ jobs:
 
           echo "=== unisocwcn ==="
           # Build uwe5621_bsp_sdio as module (was disabled in vmlinux .config)
-          # Force obj-m since CONFIG_RK_WIFI_DEVICE_UWE5621 is bool and cannot be =m in Kconfig
+          # Now tristate - CONFIG_RK_WIFI_DEVICE_UWE5621=m works natively
           make M=$UNISOC/unisocwcn modules KBUILD_MODPOST_WARN=1 \
             CONFIG_RK_WIFI_DEVICE_UWE5621=m \
             2>&1 | tail -15 || true
