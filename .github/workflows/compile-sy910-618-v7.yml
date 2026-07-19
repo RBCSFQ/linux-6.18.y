@@ -1,4 +1,4 @@
-﻿name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v7)
+name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v7)
 
 on:
   workflow_dispatch:
@@ -261,9 +261,9 @@ jobs:
           [ "$KO_COUNT" -eq 0 ] && { echo "FATAL: No modules produced"; exit 1; }; true
 
           # Strip BTF from .ko files (ophub kernel rejects cross-compiled BTF)
-          echo "=== Stripping BTF ==="
-          # strip --strip-debug does not remove .BTF; use objcopy instead
-          find $UNISOC -name "*.ko" -exec aarch64-linux-gnu-objcopy --remove-section=.BTF {} ; 2>/dev/null || true
+          echo "=== Stripping BTF (objcopy) ==="
+          # Use for loop instead of find -exec (YAML escaping issues with \; )
+          for ko in $(find $UNISOC -name "*.ko"); do aarch64-linux-gnu-objcopy --remove-section=.BTF "$ko" 2>/dev/null || true; done
           echo "Done stripping BTF"
 
 
