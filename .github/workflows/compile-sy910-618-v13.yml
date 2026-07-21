@@ -94,16 +94,17 @@ jobs:
           # 2. Fix compatible: underscore -> hyphen
           content = content.replace('"unisoc,uwe_bsp"', '"unisoc,uwe-bsp"')
           
-          # 2.5 NULL guard: insert after if (!p_data) return -ENOMEM in marlin_parse_dt
+          # 2.5 NULL guard: in marlin_parse_dt after if (!p_data) return -ENOMEM (scoped find)
           #       Uses runtime find() to locate the correct insertion point
-          pos = content.find('return -ENOMEM;')
+          fn = content.find('marlin_parse_dt')
+          pos = content.find('return -ENOMEM;', fn) if fn >= 0 else -1
           if pos >= 0:
               end = content.find('\n', pos) + 1
               guard = '\tplatform_set_drvdata(pdev, p_data);\n\tif (!np) {\n\t\tp_data->blksz = 512;\n\t\treturn 0;\n\t}\n'
               content = content[:end] + guard + content[end:]
-              print("NULL guard inserted after return -ENOMEM;")
+              print("NULL guard inserted in marlin_parse_dt")
           else:
-              print("WARNING: return -ENOMEM; not found!")
+              print("WARNING: -ENOMEM not found after marlin_parse_dt!")
           
 
 
