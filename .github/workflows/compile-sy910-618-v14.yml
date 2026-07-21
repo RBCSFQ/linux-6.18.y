@@ -1,4 +1,4 @@
-﻿name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v14)
+name: Compile SY910 WiFi Module for 6.18.18.c821-trim (v14)
 
 on:
   workflow_dispatch:
