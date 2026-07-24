@@ -140,18 +140,14 @@ jobs:
               exit(1)
 
           # 4. marlin_probe: parse_dt failure non-fatal (v21)
-          # With clock tolerance (step 3), parse_dt returns 0 even without clocks.
-          # Keep original WCN_INFO warning â€?probe must succeed to avoid use-after-free.
-          )
+          # With clock tolerance in step 3, parse_dt returns 0 for clock issues.
+          # Keep original WCN_INFO warning - probe must succeed to avoid use-after-free.
 
           with open(fpath, "w") as f:
               f.write(content)
           print("Patched wcn_boot.c OK (v21)")
           PYEOF
-          
-          # Extra safety: make ALL return -1 in marlin_parse_dt non-fatal (v21)
-          sed -i '/marlin_parse_dt/,/^}$/s/return -1;/\/* v21: return 0; *\//' drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c
-          grep -c "return 0;" drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c | head -1
+          sed -i '/marlin_parse_dt/,/^}$/s/return -1;/return 0; \/* v21 *\//' drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c
           echo "=== Verify ==="
           grep "marlin_dev->clk_32k = NULL" drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c && echo "clk_32k OK" || echo "clk_32k MISSING"
           grep "marlin_dev->clk_parent = NULL" drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c && echo "clk_parent OK" || echo "clk_parent MISSING"
