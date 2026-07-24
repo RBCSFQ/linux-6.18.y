@@ -131,15 +131,15 @@ jobs:
           content = content.replace(old_clken, new_clken)
 
           # 3.5 Fix start_marlin: NULL guard against unprobed marlin_dev (v20)
-           content = content.replace(
-               '#else\n\tWCN_INFO("%s [%s]\n", __func__, strno(subsys));',
-               '#else\n\tif (!marlin_dev) return -ENODEV;\n\tWCN_INFO("%s [%s]\n", __func__, strno(subsys));'
-           )
-           if ("if (!marlin_dev)" not in content):
-               print("start_marlin FAILED: pattern not found")
-               exit(1)
+          content = content.replace(
+              '#else\n\tWCN_INFO("%s [%s]\n", __func__, strno(subsys));',
+              '#else\n\tif (!marlin_dev) return -ENODEV;\n\tWCN_INFO("%s [%s]\n", __func__, strno(subsys));'
+          )
+          if ("if (!marlin_dev)" not in content):
+              print("start_marlin FAILED: pattern not found")
+              exit(1)
 
-           # 4. Fix marlin_probe: return error when parse_dt fails (with braces)
+          # 4. Fix marlin_probe: return error when parse_dt fails (with braces)
           content = content.replace(
               'WCN_INFO("marlin2 parse_dt some para not config\\n");',
               'if (marlin_parse_dt(pdev) < 0) {\n\t\tWCN_ERR("marlin2 parse_dt failed\\n");\n\t\treturn -ENODEV;\n\t}'
