@@ -211,8 +211,8 @@ jobs:
           {
               struct device *dev = bus_find_device_by_of_node(&platform_bus_type, np);
               return dev ? container_of(dev, struct platform_device, dev) : NULL;
-}
-EXPORT_SYMBOL(of_find_device_by_node);
+          }
+          EXPORT_SYMBOL(of_find_device_by_node);
           """
           content = content[:end_of_include] + compat + content[end_of_include:]
           changes.append("Added of_find_device_by_node compat wrapper")
@@ -247,7 +247,7 @@ EXPORT_SYMBOL(of_find_device_by_node);
           echo "=== v29 sdiohal verification ==="
           grep -c "of_find_device_by_node" $SDIOHAL && echo "compat wrapper installed" || echo "compat wrapper MISSING"
           grep -c "v28" $SDIOHAL && echo "v29 markers found" || echo "v29 markers MISSING"
-
+          ||
           echo "ccflags-y += -DCONFIG_RK_BOARD" >> $WCN/sdio/Makefile
           for d in $DRV $WCN $WCN/sdio $WCN/platform $WCN/sleep; do
             if [ -f "$d/Makefile" ]; then
