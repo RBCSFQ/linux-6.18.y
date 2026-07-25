@@ -193,7 +193,7 @@ jobs:
           \tif (!sdio_node) sdio_node = of_get_parent(np);' $SDIOHAL
           grep -q "of_get_parent" $SDIOHAL && echo "sdiohal fallback OK" || { echo "sdiohal fallback FAIL"; exit 1; }
           # v28: Add of_find_device_by_node compat wrapper + sdiohal fixes
-          python3 << '"'"'V28EOF'"'"'
+          python3 << 'V28EOF'
           import re, sys
           fpath = "drivers/net/wireless/unisoc/unisocwcn/sdio/sdiohal_main.c"
           with open(fpath, "r") as f:
@@ -216,21 +216,21 @@ jobs:
           content = content[:end_of_include] + compat + content[end_of_include:]
           changes.append("Added of_find_device_by_node compat wrapper")
           # 2. Make sdiohal host lookup errors non-fatal
-          if '"'"'sdiohal_err("sdio dev get platform device failed!!!'"'"' in content:
+          if 'sdiohal_err("sdio dev get platform device failed!!!' in content:
               content = content.replace(
-                  '"'"'sdiohal_err("sdio dev get platform device failed!!!\\n");'"'"',
-                  '"'"'sdiohal_err("sdio dev get platform device failed (v28 non-fatal)\\n");'"'"')
+                  'sdiohal_err("sdio dev get platform device failed!!!\\n");',
+                  'sdiohal_err("sdio dev get platform device failed (v28 non-fatal)\\n");')
               changes.append("Made sdio dev get platform device failed non-fatal")
-          if '"'"'sdiohal_err("get host failed!!!'"'"' in content:
+          if 'sdiohal_err("get host failed!!!' in content:
               content = content.replace(
-                  '"'"'sdiohal_err("get host failed!!!\\n");'"'"',
-                  '"'"'sdiohal_err("get host failed (v28 non-fatal)\\n");'"'"')
+                  'sdiohal_err("get host failed!!!\\n");',
+                  'sdiohal_err("get host failed (v28 non-fatal)\\n");')
               changes.append("Made get host failed non-fatal")
           # 3. Add NULL guard to sdiohal_misc_deinit
           import re
-          m = re.search(r'"'"'(int sdiohal_misc_deinit\s*\([^)]*\)\s*\{)'"'"', content)
+          m = re.search(r'(int sdiohal_misc_deinit\s*\([^)]*\)\s*\{)', content)
           if m:
-              guard = '"'"'\n\t/* v28: prevent crash when host lookup failed */\n\tif (!p_data || !p_data->sdio_pdev)\n\t\treturn 0;'"'"'
+              guard = '\n\t/* v28: prevent crash when host lookup failed */\n\tif (!p_data || !p_data->sdio_pdev)\n\t\treturn 0;'
               pos = m.end()
               content = content[:pos] + guard + content[pos:]
               changes.append("Added NULL guard to sdiohal_misc_deinit")
