@@ -1,5 +1,9 @@
 name: Compile SY910 WiFi Module for 6.18.18.c951-trim (v24)
 
+permissions:
+  contents: read
+  actions: write
+
 on:
   workflow_dispatch:
 
@@ -376,73 +380,34 @@ jobs:
           # In kernel 6.18, mmc@ffc20000 (dw-mshc) is NOT a simple-bus,
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
-          pdev_create_code = '''
-\t/* v24: Create platform device if kernel didn't populate it */
-\t/* (kernel 6.18 dw-mshc doesn't call of_platform_populate for children) */
-\t{
-\t\tstruct device_node *wcn_np = NULL;
-\t\tstruct platform_device *wcn_pdev = NULL;
-\t\tstruct bus_type *pbus = &platform_bus_type;
-\t\tstruct device *dev_iter;
-\t\tbool pdev_found = false;
-
-\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-\t\tif (!wcn_np)
-\t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-\t\tif (wcn_np) {
-\t\t\t/* Check if platform device already exists */
-\t\t\tbus_for_each_dev(pbus, NULL, &pdev_found,
-\t\t\t\t\t (int (*)(struct device *, void *))({
-\t\t\t\t\t\tint __check(struct device *d, void *data) {
-\t\t\t\t\t\t\tif (d->of_node == wcn_np) {
-\t\t\t\t\t\t\t\t*(bool *)data = true;
-\t\t\t\t\t\t\t\treturn 1;
-\t\t\t\t\t\t\t}
-\t\t\t\t\t\t\treturn 0;
-\t\t\t\t\t\t}
-\t\t\t\t\t\t__check;
-\t\t\t\t\t }));
-\t\t\tif (!pdev_found) {
-\t\t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
-\t\t\t\tif (wcn_pdev)
-\t\t\t\t\tWCN_INFO("v24: created platform device for %pOF\\n", wcn_np);
-\t\t\t\telse
-\t\t\t\t\tWCN_ERR("v24: failed to create platform device\\n");
-\t\t\t}
-\t\t\tof_node_put(wcn_np);
-\t\t}
-\t}
-'''
-          # Simpler approach: use a helper function instead of nested function
-          # (nested functions are GCC extensions, may cause issues)
           pdev_create_code_simple = '''
-\t/* v24: Create platform device if kernel didn't populate it */
-\t/* (kernel 6.18 dw-mshc doesn't call of_platform_populate for children) */
-\t{
-\t\tstruct device_node *wcn_np;
-\t\tstruct platform_device *wcn_pdev;
+          \t/* v24: Create platform device if kernel didn't populate it */
+          \t/* (kernel 6.18 dw-mshc doesn't call of_platform_populate for children) */
+          \t{
+          \t\tstruct device_node *wcn_np;
+          \t\tstruct platform_device *wcn_pdev;
 
-\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-\t\tif (!wcn_np)
-\t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-\t\tif (wcn_np) {
-\t\t\twcn_pdev = of_find_device_by_node(wcn_np);
-\t\t\tif (!wcn_pdev) {
-\t\t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
-\t\t\t\tif (wcn_pdev)
-\t\t\t\t\tWCN_INFO("v24: created platform device for wifi node\\n");
-\t\t\t\telse
-\t\t\t\t\tWCN_ERR("v24: failed to create platform device\\n");
-\t\t\t} else {
-\t\t\t\tWCN_INFO("v24: platform device already exists\\n");
-\t\t\t\tput_device(&wcn_pdev->dev);
-\t\t\t}
-\t\t\tof_node_put(wcn_np);
-\t\t} else {
-\t\t\tWCN_INFO("v24: no DT node found (will rely on manual bind)\\n");
-\t\t}
-\t}
-'''
+          \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
+          \t\tif (!wcn_np)
+          \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
+          \t\tif (wcn_np) {
+          \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
+          \t\t\tif (!wcn_pdev) {
+          \t\t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
+          \t\t\t\tif (wcn_pdev)
+          \t\t\t\t\tWCN_INFO("v24: created platform device for wifi node\\n");
+          \t\t\t\telse
+          \t\t\t\t\tWCN_ERR("v24: failed to create platform device\\n");
+          \t\t\t} else {
+          \t\t\t\tWCN_INFO("v24: platform device already exists\\n");
+          \t\t\t\tput_device(&wcn_pdev->dev);
+          \t\t\t}
+          \t\t\tof_node_put(wcn_np);
+          \t\t} else {
+          \t\t\tWCN_INFO("v24: no DT node found (will rely on manual bind)\\n");
+          \t\t}
+          \t}
+          '''.rstrip()
 
           # Find marlin_init and insert after platform_driver_register
           # Strategy: find "marlin_init" function, then find platform_driver_register inside it
