@@ -451,83 +451,83 @@ jobs:
           # In kernel 6.18, mmc@ffc20000 (dw-mshc) is NOT a simple-bus,
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
-           pdev_create_code_v39 = '''
-           \t/* v39: Register driver, create device, strip/restore pinctrl to avoid pin conflict */
-           \t{
-           \t\tint ret;
-           \t\tstruct device_node *wcn_np;
-           \t\tstruct platform_device *wcn_pdev;
-           \t\tstruct property *prop_p0 = NULL, *prop_pn = NULL, *prop_p1 = NULL;
-           
-           \t\tret = platform_driver_register(&marlin_driver);
-           \t\tif (ret) {
-           \t\t\tWCN_ERR("v39: driver register failed\\n");
-           \t\t\treturn ret;
-           \t\t}
-           
-           \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-           \t\tif (!wcn_np)
-           \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-           \t\tif (wcn_np) {
-           \t\t\t/* v39: Clean up stale platform device */
-           \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
-           \t\t\tif (!wcn_pdev) {
-           \t\t\t\tstruct device *__d;
-           \t\t\t\tint __i;
-           \t\t\t\tfor (__i = 0; __i < 8; __i++) {
-           \t\t\t\t\tchar __name[32];
-           \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
-           \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-           \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-           \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
-           \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-           \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-           \t\t\t\t}
-           \t\t\t}
-           \t\t\tif (wcn_pdev) {
-           \t\t\t\tWCN_INFO("v39: unregistering stale platform device\\n");
-           \t\t\t\tplatform_device_unregister(wcn_pdev);
-           \t\t\t}
-           \t\t\t/* v39: Temporarily strip pinctrl from DT node so marlin_probe
-           \t\t\t * does not claim pins (gpio3-11). The SDIO scan in start_marlin
-           \t\t\t * will re-claim them properly via sdiohal_scan_card. */
-           \t\t\tprop_p0 = of_find_property(wcn_np, "pinctrl-0", NULL);
-           \t\t\tprop_pn = of_find_property(wcn_np, "pinctrl-names", NULL);
-           \t\t\tprop_p1 = of_find_property(wcn_np, "pinctrl-1", NULL);
-           \t\t\tif (prop_p0) of_remove_property(wcn_np, prop_p0);
-           \t\t\tif (prop_pn) of_remove_property(wcn_np, prop_pn);
-           \t\t\tif (prop_p1) of_remove_property(wcn_np, prop_p1);
-           \t\t\tWCN_INFO("v39: stripped pinctrl (p0=%px pn=%px p1=%px)\\n", prop_p0, prop_pn, prop_p1);
+          pdev_create_code_v39 = '''
+          \t/* v39: Register driver, create device, strip/restore pinctrl to avoid pin conflict */
+          \t{
+          \t\tint ret;
+          \t\tstruct device_node *wcn_np;
+          \t\tstruct platform_device *wcn_pdev;
+          \t\tstruct property *prop_p0 = NULL, *prop_pn = NULL, *prop_p1 = NULL;
+          
+          \t\tret = platform_driver_register(&marlin_driver);
+          \t\tif (ret) {
+          \t\t\tWCN_ERR("v39: driver register failed\\n");
+          \t\t\treturn ret;
+          \t\t}
+          
+          \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
+          \t\tif (!wcn_np)
+          \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
+          \t\tif (wcn_np) {
+          \t\t\t/* v39: Clean up stale platform device */
+          \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
+          \t\t\tif (!wcn_pdev) {
+          \t\t\t\tstruct device *__d;
+          \t\t\t\tint __i;
+          \t\t\t\tfor (__i = 0; __i < 8; __i++) {
+          \t\t\t\t\tchar __name[32];
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
+          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
+          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
+          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
+          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tif (wcn_pdev) {
+          \t\t\t\tWCN_INFO("v39: unregistering stale platform device\\n");
+          \t\t\t\tplatform_device_unregister(wcn_pdev);
+          \t\t\t}
+          \t\t\t/* v39: Temporarily strip pinctrl from DT node so marlin_probe
+          \t\t\t * does not claim pins (gpio3-11). The SDIO scan in start_marlin
+          \t\t\t * will re-claim them properly via sdiohal_scan_card. */
+          \t\t\tprop_p0 = of_find_property(wcn_np, "pinctrl-0", NULL);
+          \t\t\tprop_pn = of_find_property(wcn_np, "pinctrl-names", NULL);
+          \t\t\tprop_p1 = of_find_property(wcn_np, "pinctrl-1", NULL);
+          \t\t\tif (prop_p0) of_remove_property(wcn_np, prop_p0);
+          \t\t\tif (prop_pn) of_remove_property(wcn_np, prop_pn);
+          \t\t\tif (prop_p1) of_remove_property(wcn_np, prop_p1);
+          \t\t\tWCN_INFO("v39: stripped pinctrl (p0=%px pn=%px p1=%px)\\n", prop_p0, prop_pn, prop_p1);
 
-           \t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
-           \t\t\tif (wcn_pdev) {
-           \t\t\t\tWCN_INFO("v39: created platform device (probe triggered)\\n");
-           \t\t\t#ifdef CONFIG_PINCTRL
-           \t\t\t\tWCN_INFO("v39: dev.pins=%px\\n", wcn_pdev->dev.pins);
-           \t\t\t\tif (wcn_pdev->dev.pins) {
-           \t\t\t\t\tWCN_INFO("v39: dev.pins->p=%px (expected harmless)\\n", wcn_pdev->dev.pins->p);
-           \t\t\t\t} else {
-           \t\t\t\t\tWCN_INFO("v39: dev.pins is NULL (expected after stripping)\\n");
-           \t\t\t\t}
-           \t\t\t#endif
-           \t\t\t} else {
-           \t\t\t\tWCN_ERR("v39: of_platform_device_create failed\\n");
-           \t\t\t}
+          \t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
+          \t\t\tif (wcn_pdev) {
+          \t\t\t\tWCN_INFO("v39: created platform device (probe triggered)\\n");
+          \t\t\t#ifdef CONFIG_PINCTRL
+          \t\t\t\tWCN_INFO("v39: dev.pins=%px\\n", wcn_pdev->dev.pins);
+          \t\t\t\tif (wcn_pdev->dev.pins) {
+          \t\t\t\t\tWCN_INFO("v39: dev.pins->p=%px (expected harmless)\\n", wcn_pdev->dev.pins->p);
+          \t\t\t\t} else {
+          \t\t\t\t\tWCN_INFO("v39: dev.pins is NULL (expected after stripping)\\n");
+          \t\t\t\t}
+          \t\t\t#endif
+          \t\t\t} else {
+          \t\t\t\tWCN_ERR("v39: of_platform_device_create failed\\n");
+          \t\t\t}
 
-           \t\t\t/* v39: Restore pinctrl for start_marlin/sdiohal_scan_card to use */
-           \t\t\tif (prop_p0) of_add_property(wcn_np, prop_p0);
-           \t\t\tif (prop_pn) of_add_property(wcn_np, prop_pn);
-           \t\t\tif (prop_p1) of_add_property(wcn_np, prop_p1);
-           \t\t\tWCN_INFO("v39: restored pinctrl\\n");
+          \t\t\t/* v39: Restore pinctrl for start_marlin/sdiohal_scan_card to use */
+          \t\t\tif (prop_p0) of_add_property(wcn_np, prop_p0);
+          \t\t\tif (prop_pn) of_add_property(wcn_np, prop_pn);
+          \t\t\tif (prop_p1) of_add_property(wcn_np, prop_p1);
+          \t\t\tWCN_INFO("v39: restored pinctrl\\n");
 
-           \t\t\tof_node_put(wcn_np);
-           \t\t} else {
-           \t\t\tWCN_INFO("v39: no DT node found\\n");
-           \t\t}
+          \t\t\tof_node_put(wcn_np);
+          \t\t} else {
+          \t\t\tWCN_INFO("v39: no DT node found\\n");
+          \t\t}
 
-           \t\treturn 0;
-           \t}
-           '''.rstrip()
+          \t\treturn 0;
+          \t}
+          '''.rstrip()
 
           # v39: REPLACE return platform_driver_register with of_platform_device_create + pinctrl release
           init_pos = content.find("marlin_init")
