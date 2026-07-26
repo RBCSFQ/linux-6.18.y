@@ -445,64 +445,64 @@ jobs:
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
           pdev_create_code_simple = '''
-\t/* v35: Register driver first, then create device (no GPIO claims) */
-\t{
-\t\tint ret;
-\t\tstruct device_node *wcn_np;
-\t\tstruct platform_device *wcn_pdev;
-
-\t\tret = platform_driver_register(&marlin_driver);
-\t\tif (ret) {
-\t\t\tWCN_ERR("v35: driver register failed\\n");
-\t\t\treturn ret;
-\t\t}
-
-\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-\t\tif (!wcn_np)
-\t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-\t\tif (wcn_np) {
-\t\t\t/* v35: Clean up stale platform device */
-\t\t\twcn_pdev = of_find_device_by_node(wcn_np);
-\t\t\tif (!wcn_pdev) {
-\t\t\t\t/* Fallback: find by name for v31-style devices without of_node */
-\t\t\t\tstruct device *__d;
-\t\t\t\tint __i;
-\t\t\t\tfor (__i = 0; __i < 8; __i++) {
-\t\t\t\t\tchar __name[32];
-\t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
-\t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-\t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-\t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
-\t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-\t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-\t\t\t\t}
-\t\t\t}
-\t\t\tif (wcn_pdev) {
-\t\t\t\tWCN_INFO("v35: unregistering stale platform device\\n");
-\t\t\t\tplatform_device_unregister(wcn_pdev);
-\t\t\t}
-\t\t\t/* v35: platform_device_alloc avoids DT resource population.
-\t\t\t * Driver already registered, so platform_device_add triggers
-\t\t\t * immediate OF match + probe (no GPIO claims). */
-\t\t\twcn_pdev = platform_device_alloc(\"unisoc-uwe-bsp\", PLATFORM_DEVID_NONE);
-\t\t\tif (wcn_pdev) {
-\t\t\t\twcn_pdev->dev.of_node = of_node_get(wcn_np);
-\t\t\t\tif (platform_device_add(wcn_pdev)) {
-\t\t\t\t\tplatform_device_put(wcn_pdev);
-\t\t\t\t\tWCN_ERR("v35: failed to add platform device\\n");
-\t\t\t\t} else {
-\t\t\t\t\tWCN_INFO("v35: created platform device (probe triggered)\\n");
-\t\t\t\t}
-\t\t\t} else {
-\t\t\t\tWCN_ERR("v35: failed to platform_device_alloc\\n");
-\t\t\t}
-\t\t\tof_node_put(wcn_np);
-\t\t} else {
-\t\t\tWCN_INFO("v35: no DT node found\\n");
-\t\t}
-
-\t\treturn 0;
-\t}
+          \t/* v35: Register driver first, then create device (no GPIO claims) */
+          \t{
+          \t\tint ret;
+          \t\tstruct device_node *wcn_np;
+          \t\tstruct platform_device *wcn_pdev;
+          
+          \t\tret = platform_driver_register(&marlin_driver);
+          \t\tif (ret) {
+          \t\t\tWCN_ERR("v35: driver register failed\\n");
+          \t\t\treturn ret;
+          \t\t}
+          
+          \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
+          \t\tif (!wcn_np)
+          \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
+          \t\tif (wcn_np) {
+          \t\t\t/* v35: Clean up stale platform device */
+          \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
+          \t\t\tif (!wcn_pdev) {
+          \t\t\t\t/* Fallback: find by name for v31-style devices without of_node */
+          \t\t\t\tstruct device *__d;
+          \t\t\t\tint __i;
+          \t\t\t\tfor (__i = 0; __i < 8; __i++) {
+          \t\t\t\t\tchar __name[32];
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
+          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
+          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
+          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
+          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tif (wcn_pdev) {
+          \t\t\t\tWCN_INFO("v35: unregistering stale platform device\\n");
+          \t\t\t\tplatform_device_unregister(wcn_pdev);
+          \t\t\t}
+          \t\t\t/* v35: platform_device_alloc avoids DT resource population.
+          \t\t\t * Driver already registered, so platform_device_add triggers
+          \t\t\t * immediate OF match + probe (no GPIO claims). */
+          \t\t\twcn_pdev = platform_device_alloc(\"unisoc-uwe-bsp\", PLATFORM_DEVID_NONE);
+          \t\t\tif (wcn_pdev) {
+          \t\t\t\twcn_pdev->dev.of_node = of_node_get(wcn_np);
+          \t\t\t\tif (platform_device_add(wcn_pdev)) {
+          \t\t\t\t\tplatform_device_put(wcn_pdev);
+          \t\t\t\t\tWCN_ERR("v35: failed to add platform device\\n");
+          \t\t\t\t} else {
+          \t\t\t\t\tWCN_INFO("v35: created platform device (probe triggered)\\n");
+          \t\t\t\t}
+          \t\t\t} else {
+          \t\t\t\tWCN_ERR("v35: failed to platform_device_alloc\\n");
+          \t\t\t}
+          \t\t\tof_node_put(wcn_np);
+          \t\t} else {
+          \t\t\tWCN_INFO("v35: no DT node found\\n");
+          \t\t}
+          
+          \t\treturn 0;
+          \t}
           '''.rstrip()
 
           # v35: REPLACE 'return platform_driver_register' with driver-first (no GPIO) approach
