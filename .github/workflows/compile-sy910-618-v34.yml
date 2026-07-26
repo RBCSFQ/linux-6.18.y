@@ -445,74 +445,70 @@ jobs:
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
           pdev_create_code_simple = '''
-          \t/* v26: Create platform device if kernel didn't populate it */
-          \t/* (kernel 6.18 dw-mshc doesn't call of_platform_populate for children) */
+          \t/* v34: Register driver first, then create device (probe fires immediately) */
           \t{
+          \t\tint ret;
           \t\tstruct device_node *wcn_np;
           \t\tstruct platform_device *wcn_pdev;
-
+          
+          \t\tret = platform_driver_register(&marlin_driver);
+          \t\tif (ret) {
+          \t\t\tWCN_ERR("v34: driver register failed\\n");
+          \t\t\treturn ret;
+          \t\t}
+          
           \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
           \t\tif (!wcn_np)
           \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
           \t\tif (wcn_np) {
+          \t\t\t/* v34: Clean up stale platform device */
           \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
           \t\t\tif (!wcn_pdev) {
-          \t\t\t\t/* v34: Fallback - find by name for v31-style devices without of_node */
+          \t\t\t\t/* Fallback: find by name for v31-style devices without of_node */
           \t\t\t\tstruct device *__d;
           \t\t\t\tint __i;
           \t\t\t\tfor (__i = 0; __i < 8; __i++) {
           \t\t\t\t\tchar __name[32];
-          \t\t\t\t\tsnprintf(__name, sizeof(__name), \"unisoc_wcn.%%d\", __i);
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
           \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
           \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-          \t\t\t\t\tsnprintf(__name, sizeof(__name), \"unisoc_wcn.%%d.auto\", __i);
+          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
           \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
           \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
           \t\t\t\t}
           \t\t\t}
           \t\t\tif (wcn_pdev) {
-          \t\t\t\t/* v34: Unregister stale platform device */
-          \t\t\t\tWCN_INFO(\"v34: unregistering stale platform device\\n\");
+          \t\t\t\tWCN_INFO("v34: unregistering stale platform device\\n");
           \t\t\t\tplatform_device_unregister(wcn_pdev);
           \t\t\t}
-          \t\t\t/* v34: Use platform_device_alloc (fixed name) + manual of_node
-          \t\t\t * to avoid kobject empty-name crash from of_device_alloc(NULL,NULL)
-          \t\t\t * and prevent GPIO claims from of_device resource population */
-          \t\t\twcn_pdev = platform_device_alloc(\"unisoc-uwe-bsp\", PLATFORM_DEVID_NONE);
-          \t\t\twcn_pdev->dev.of_node = of_node_get(wcn_np);
-          \t\t\tif (wcn_pdev) {
-          \t\t\t\tif (platform_device_add(wcn_pdev)) {
-          \t\t\t\t\tplatform_device_put(wcn_pdev);
-          \t\t\t\t\twcn_pdev = NULL;
-          \t\t\t\t\tWCN_ERR(\"v34: failed to add platform device\\n\");
-          \t\t\t\t} else {
-          \t\t\t\t\tWCN_INFO(\"v34: created platform device (no GPIO claims)\\n\");
-          \t\t\t\t}
-          \t\t\t} else {
-          \t\t\t\tWCN_ERR(\"v34: failed to platform_device_alloc\\n\");
-          \t\t\t}
+          \t\t\t/* v34: of_platform_device_create triggers probe immediately
+          \t\t\t * (driver already registered, so match+probe fires now) */
+          \t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
+          \t\t\tif (wcn_pdev)
+          \t\t\t\tWCN_INFO("v34: created platform device (probe triggered)\\n");
+          \t\t\telse
+          \t\t\t\tWCN_ERR("v34: of_platform_device_create failed\\n");
           \t\t\tof_node_put(wcn_np);
           \t\t} else {
-          \t\t\tWCN_INFO("v26: no DT node found (will rely on manual bind)\\n");
+          \t\t\tWCN_INFO("v34: no DT node found\\n");
           \t\t}
+          
+          \t\treturn 0;
           \t}
           '''.rstrip()
 
-          # Find marlin_init and insert BEFORE 'return platform_driver_register'
-          # v26 FIX: v24 inserted AFTER 'return ...;' making code unreachable!
-          # Now we find the LINE containing platform_driver_register and insert BEFORE it
+          # v34: REPLACE 'return platform_driver_register' with driver-first approach
           init_pos = content.find("marlin_init")
           if init_pos >= 0:
               pdr_pos = content.find("platform_driver_register", init_pos)
               if pdr_pos >= 0:
-                  # Find the START of the line containing platform_driver_register
                   line_start = content.rfind("\n", 0, pdr_pos)
-                  if line_start >= 0:
-                      insert_pos = line_start + 1  # Insert BEFORE this line
-                      content = content[:insert_pos] + pdev_create_code_simple + "\n" + content[insert_pos:]
-                      changes.append("v26: Added platform device creation BEFORE return platform_driver_register")
+                  line_end = content.find("\n", pdr_pos)
+                  if line_start >= 0 and line_end >= 0:
+                      content = content[:line_start+1] + pdev_create_code_simple + "\n" + content[line_end:]
+                      changes.append("v34: Replaced return line with driver-first device creation")
                   else:
-                      changes.append("WARNING: Could not find line start for platform_driver_register")
+                      changes.append("WARNING: Could not find line bounds for return")
               else:
                   changes.append("WARNING: platform_driver_register not found in marlin_init")
           else:
