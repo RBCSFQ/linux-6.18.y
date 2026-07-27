@@ -124,7 +124,7 @@ jobs:
           sed -i "s/pcfg_pull_none_schmitt/pcfg_pull_none/g" $DTS
           sed -i "/^[\t ]*reserved-memory {$/,/^[\t ]*};$/d" $DTS
 
-          # v47: No DTB modification - pinctrl released at driver level in marlin_probe()
+          # v47: No DTB modification - pinctrl released at driver level in marlin_init()
           echo "v47: DTB unchanged (pinctrl handled by driver)"
 
           # Ensure DTB is in Makefile
@@ -455,8 +455,7 @@ jobs:
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
           pdev_create_code_v47 = '''
-          \t/* v47: Register driver, create device. Pinctrl bound normally during probe, -
-          \t * released at end of marlin_probe\(\) to free gpio3-11\) */
+          \t/* v47: Register driver, create device, then release pinctrl */
           \t{
           \t\tint ret;
           \t\tstruct device_node *wcn_np;
@@ -472,42 +471,27 @@ jobs:
           \t\tif (!wcn_np)
           \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
           \t\tif (wcn_np) {
-          \t\t\t/* v47: Clean up stale platform device */
           \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
-          \t\t\tif (!wcn_pdev) {
-          \t\t\t\tstruct device *__d;
-          \t\t\t\tint __i;
-          \t\t\t\tfor (__i = 0; __i < 8; __i++) {
-          \t\t\t\t\tchar __name[32];
-          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d", __i);
-          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-          \t\t\t\t\tsnprintf(__name, sizeof(__name), "unisoc_wcn.%d.auto", __i);
-          \t\t\t\t\t__d = bus_find_device_by_name(&platform_bus_type, NULL, __name);
-          \t\t\t\t\tif (__d) { wcn_pdev = to_platform_device(__d); put_device(__d); break; }
-          \t\t\t\t}
-          \t\t\t}
           \t\t\tif (wcn_pdev) {
           \t\t\t\tWCN_INFO("v47: unregistering stale platform device\\n");
           \t\t\t\tplatform_device_unregister(wcn_pdev);
           \t\t\t}
-          \t\t\t/* v47: pinctrl was stripped from DT at compile time,
-          \t\t\t * so pinctrl_bind_pins will NOT claim gpio3-11.
-          \t\t\t * No runtime pinctrl manipulation needed. */
+          \t\t\t/* v47: Create device; pinctrl bound during probe, released below */
           \t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
           \t\t\tif (wcn_pdev) {
           \t\t\t\tWCN_INFO("v47: created platform device (probe triggered)\\n");
-          \t\t\t\tWCN_INFO("v47: dev.pins=%px (will be released after probe)\\n", wcn_pdev->dev.pins);
+          \t\t\t\tWCN_INFO("v47: dev.pins=%px\\n", wcn_pdev->dev.pins);
+          \t\t\t\t/* v47: Release pinctrl to free gpio3-11 for SDIO child device */
+          \t\t\t\tif (wcn_pdev->dev.pins && wcn_pdev->dev.pins->p) {
+          \t\t\t\t\tpinctrl_select_state(wcn_pdev->dev.pins->p, NULL);
+          \t\t\t\t\tWCN_INFO("v47: pinctrl released after probe (pins=%px)\\n", wcn_pdev->dev.pins);
+          \t\t\t\t}
           \t\t\t} else {
           \t\t\t\tWCN_ERR("v47: of_platform_device_create failed\\n");
           \t\t\t}
-
-          \t\t\tof_node_put(wcn_np);
           \t\t} else {
           \t\t\tWCN_INFO("v47: no DT node found\\n");
           \t\t}
-
-          \t\treturn 0;
           \t}
           '''.rstrip()
 
@@ -521,35 +505,6 @@ jobs:
                   if line_start >= 0 and line_end >= 0:
                       content = content[:line_start+1] + pdev_create_code_v47 + "\n" + content[line_end:]
                       changes.append("v47: Replaced return line with driver-first device creation")
-            
-            # v47: Release pinctrl at end of marlin_probe to free gpio3-11
-            p_start = content.find("static int marlin_probe")
-            if p_start < 0:
-                p_start = content.find("int marlin_probe")
-            if p_start >= 0:
-                bc = 0; st = False; pe = -1
-                for i in range(p_start, min(p_start + 8000, len(content))):
-                    if content[i] == '{': bc += 1; st = True
-                    elif content[i] == '}':
-                        bc -= 1
-                        if st and bc == 0: pe = i; break
-                if pe >= 0:
-                    sec = content[p_start:pe]
-                    rets = list(re.finditer(r'\breturn 0;', sec))
-                    if rets:
-                        ins = p_start + rets[-1].start()
-                        rc = '\t'
-                        rc += '\n\t/* v47: Release pinctrl to free gpio3-11 for SDIO child device */'
-                        rc += '\n\tif (pdev->dev.pins && pdev->dev.pins->p) {'
-                        rc += '\n\t\tpinctrl_select_state(pdev->dev.pins->p, NULL);'
-                        rc += '\n\t\tWCN_INFO("v47: pinctrl released after probe (pins=%px)\\n", pdev->dev.pins);'
-                        rc += '\n\t}\n'
-                        content = content[:ins] + rc + content[ins:]
-                        changes.append("v47: Added pinctrl release at end of marlin_probe")
-                    else:
-                        changes.append("v47: WARNING: no return 0 found in marlin_probe")
-                else:
-                    changes.append("v47: WARNING: marlin_probe closing brace not found")
                   else:
                       changes.append("WARNING: Could not find line bounds for return")
               else:
@@ -654,7 +609,8 @@ jobs:
               if found: sys.stdout.write(line)
               if found and '};' in line and 'uwe-bsp@1' not in line: found = False
           "
-
+          echo ""
+          echo "          "
 
       - name: Package output (flat directory - NO zip to avoid double-nesting)
         run: |
