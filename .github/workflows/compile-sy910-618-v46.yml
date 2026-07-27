@@ -126,21 +126,14 @@ jobs:
 
           # v46: Strip pinctrl AND interrupts from uwe-bsp node to prevent gpio3-11 pin conflict
           # awk is used instead of sed because the sed range /uwe-bsp@1 {/,/};/ breaks on nested blocks
-          python3 - "$DTS" > "$DTS.tmp" <<'PYEOF'
-import sys
-with open(sys.argv[1]) as f:
-    lines = f.readlines()
-in_block = False
-for line in lines:
-    if 'uwe-bsp@1' in line:
-        in_block = True
-    if in_block and ('pinctrl-' in line or 'interrupts' in line or 'interrupt-parent' in line or 'interrupt-names' in line):
-        continue
-    if in_block and line.rstrip() == '};' and 'uwe-bsp@1' not in line:
-        in_block = False
-    sys.stdout.write(line)
-PYEOF
-          mv "$DTS.tmp" "$DTS"
+          python3 -c "
+          import sys; lines = open(sys.argv[1]).readlines(); in_block = False
+          for line in lines:
+              if 'uwe-bsp@1' in line: in_block = True
+              if in_block and ('pinctrl-' in line or 'interrupts' in line or 'interrupt-parent' in line or 'interrupt-names' in line): continue
+              if in_block and line.rstrip() == '};' and 'uwe-bsp@1' not in line: in_block = False
+              sys.stdout.write(line)
+          " "$DTS" > "$DTS.tmp" && mv "$DTS.tmp" "$DTS"
           echo "v46: stripped pinctrl and interrupts from uwe-bsp DT node"
 
           # Ensure DTB is in Makefile
@@ -636,33 +629,24 @@ PYEOF
           echo "=== v46: Verify uwe-bsp node content in compiled DTB ==="
           echo " Expected: NO pinctrl, NO interrupts (only blksz, compatible, status)"
           dtc -I dtb -O dts arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null | python3 -c "
-import sys
-found = False
-for line in sys.stdin:
-    if 'uwe-bsp@1' in line:
-        found = True
-    if found:
-        sys.stdout.write(line)
-    if found and '};' in line and 'uwe-bsp@1' not in line:
-        found = False
-"
+          import sys; found = False
+          for line in sys.stdin:
+              if 'uwe-bsp@1' in line: found = True
+              if found: sys.stdout.write(line)
+              if found and '};' in line and 'uwe-bsp@1' not in line: found = False
+          "
           echo ""
           echo "=== v46: Check for pinctrl/interrupts leakage ==="
           dtc -I dtb -O dts arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null | python3 -c "
-import sys
-found = False
-fail = False
-for line in sys.stdin:
-    if 'uwe-bsp@1' in line:
-        found = True
-    if found and ('pinctrl' in line or 'interrupts' in line):
-        print('FAIL: ' + line, end='')
-        fail = True
-    if found and '};' in line and 'uwe-bsp@1' not in line:
-        found = False
-if not fail:
-    print('PASS: no pinctrl or interrupts in uwe-bsp')
-"
+          import sys; found = False; fail = False
+          for line in sys.stdin:
+              if 'uwe-bsp@1' in line: found = True
+              if found and ('pinctrl' in line or 'interrupts' in line):
+                  print('FAIL: ' + line, end=''); fail = True
+              if found and '};' in line and 'uwe-bsp@1' not in line: found = False
+          if not fail:
+              print('PASS: no pinctrl or interrupts in uwe-bsp')
+          "
 
       - name: Package output (flat directory - NO zip to avoid double-nesting)
         run: |
