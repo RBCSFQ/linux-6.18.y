@@ -248,14 +248,14 @@ jobs:
           print(f"Total: {len(changes)} changes")
           # 4. v54: Make pinctrl_select_state failure non-fatal
           import re
-          ptn = r'(ret\\s*=\\s*pinctrl_select_state\\([^;]+;)\\s*\\n(\\s*)if\\s*\\(ret\\)\\s*\\{)'
+          ptn = r'(ret\\s*=\\s*pinctrl_select_state\([^;]+;)\\s*\\n(\\s*)if\\s*\(ret\)\\s*\{)'
           m = re.search(ptn, content)
           if m:
               indent = m.group(2)
               new_ptn = (m.group(1) + '\\n' + indent +
                   '/* v54: pinctrl conflict non-fatal */\\n' + indent +
                   'if (ret) {\\n' + indent +
-                  \047\\tsdiohal_err("pinctrl busy, continuing (v54)\\n");\\n\047 + indent +
+                  '\\tsdiohal_err("pinctrl busy, continuing (v54)\\n");\\n' + indent +
                   '\\tret = 0;\\n' + indent + '}')
               content = content.replace(m.group(0), new_ptn)
               changes.append('Made pinctrl_select_state non-fatal (v54)')
@@ -471,34 +471,34 @@ jobs:
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
           pdev_create_code_v54 = '''
-\t/* v54: Register driver, create device - pinctrl tolerance in sdiohal */
-\t{
-\t\tint ret;
-\t\tstruct device_node *wcn_np;
-\t\tstruct platform_device *wcn_pdev;
-
-\t\tret = platform_driver_register(\u0026marlin_driver);
-\t\tif (ret) {
-\t\t\tWCN_ERR("v54: driver register failed\\n");
-\t\t\treturn ret;
-\t\t}
-
-\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-\t\tif (!wcn_np)
-\t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-\t\tif (wcn_np) {
-\t\t\twcn_pdev = of_find_device_by_node(wcn_np);
-\t\t\tif (!wcn_pdev) {
-\t\t\t\tof_node_clear_flag(wcn_np, OF_POPULATED);
-\t\t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
-\t\t\t}
-\t\t\tif (wcn_pdev)
-\t\t\t\tWCN_INFO("v54: device ready (sdiohal pinctrl tolerant)\\n");
-\t\t\telse
-\t\t\t\tWCN_ERR("v54: device not found\\n");
-\t\t}
-\t}
-          '''.rstrip()
+          \t/* v54: Register driver, create device - pinctrl tolerance in sdiohal */
+          \t{
+          \t\tint ret;
+          \t\tstruct device_node *wcn_np;
+          \t\tstruct platform_device *wcn_pdev;
+          
+          \t\tret = platform_driver_register(&marlin_driver);
+          \t\tif (ret) {
+          \t\t\tWCN_ERR("v54: driver register failed\\n");
+          \t\t\treturn ret;
+          \t\t}
+          
+          \t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
+          \t\tif (!wcn_np)
+          \t\t\twcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
+          \t\tif (wcn_np) {
+          \t\t\twcn_pdev = of_find_device_by_node(wcn_np);
+          \t\t\tif (!wcn_pdev) {
+          \t\t\t\tof_node_clear_flag(wcn_np, OF_POPULATED);
+          \t\t\t\twcn_pdev = of_platform_device_create(wcn_np, NULL, NULL);
+          \t\t\t}
+          \t\t\tif (wcn_pdev)
+          \t\t\t\tWCN_INFO("v54: device ready (sdiohal pinctrl tolerant)\\n");
+          \t\t\telse
+          \t\t\t\tWCN_ERR("v54: device not found\\n");
+          \t\t}
+          \t}
+                    '''.rstrip()
 
           # v54: REPLACE return platform_driver_register with of_platform_device_create + pinctrl release
           init_pos = content.find("marlin_init")
