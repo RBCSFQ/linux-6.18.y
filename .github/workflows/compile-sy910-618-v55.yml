@@ -1,4 +1,4 @@
-﻿name: Compile SY910 WiFi Module for 6.18.18.c951-trim (v55)
+name: Compile SY910 WiFi Module for 6.18.18.c951-trim (v55)
 
 permissions:
   contents: read
@@ -480,7 +480,7 @@ jobs:
           # so child node uwe-bsp@1 does NOT get auto-created as platform device.
           # We must create it manually after platform_driver_register().
           pdev_create_code_v55 = '''
-          \t/* v55: Register driver, create device - multi-file pinctrl tolerance
+          \t/* v55: Register driver, create device - multi-file pinctrl tolerance */
           \t{
           \t\tint ret;
           \t\tstruct device_node *wcn_np;
