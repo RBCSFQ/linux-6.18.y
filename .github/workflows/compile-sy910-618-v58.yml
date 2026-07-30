@@ -506,10 +506,9 @@ jobs:
           \t\t\t\tWCN_ERR("v58: device not found\\n");
           \t\t}
           \t}
-                    '''.rstrip()
-                    '''.rstrip()
+          '''
+          pdev_create_code_v58 = pdev_create_code_v58.rstrip()
 
-          # v58: Strip pinctrl from DT node before creating platform device
           init_pos = content.find("marlin_init")
           if init_pos >= 0:
               pdr_pos = content.find("platform_driver_register", init_pos)
@@ -518,7 +517,7 @@ jobs:
                   line_end = content.find("\n", pdr_pos)
                   if line_start >= 0 and line_end >= 0:
                       content = content[:line_start+1] + pdev_create_code_v58 + "\n" + content[line_end:]
-                      changes.append("v58: Replaced return line with driver-first device creation")
+                      changes.append("v58: Replaced return line with device creation (parent keeps pinctrl)")
                   else:
                       changes.append("WARNING: Could not find line bounds for return")
               else:
