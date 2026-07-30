@@ -271,6 +271,7 @@ jobs:
               changes.append('WARNING: No pinctrl pattern found in any sdio .c file')
           else:
               changes.append(f'v58: skipped pinctrl in {patched} sdio file(s)')
+          V28EOF
           grep -c "of_find_device_by_node" $SDIOHAL && echo "compat wrapper installed" || echo "compat wrapper MISSING"
           grep -c "v28" $SDIOHAL && echo "v29 markers found" || echo "v29 markers MISSING"
           echo "ccflags-y += -DCONFIG_RK_BOARD" >> $WCN/sdio/Makefile
