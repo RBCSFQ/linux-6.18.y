@@ -246,32 +246,31 @@ jobs:
           for c in changes:
               print(f"  {c}")
           print(f"Total: {len(changes)} changes")
-           # 4. v58: Skip redundant pinctrl_select_state in SDIO child (parent already applied)
-           # Parent platform device already bound pinctrl; SDIO child skip avoids conflict
-           # Comment out pinctrl_select_state calls entirely (replace with ret=0 dead block)
-           import glob, os
-           wcn_sdio = "drivers/net/wireless/unisoc/unisocwcn/sdio"
-           ptn = r'(\s*)(ret\s*=\s*pinctrl_select_state\([^;]+;)\s*\n(\s*)(if\s*\(ret\)\s*\{)'
-           patched = 0
-           for fpath in glob.glob(os.path.join(wcn_sdio, "*.c")):
-               with open(fpath, "r") as f:
-                   fc = f.read()
-               m = re.search(ptn, fc)
-               if m:
-                   indent = m.group(1)
-                   repl = (indent + '/* v58: pinctrl already applied by parent platform device */' + '\n' +
-                       indent + 'ret = 0; /* skip pinctrl_select_state */' + '\n' +
-                       indent + '{' + '\n' + indent + '\t(void)0; /* dead block for syntax */')
-                   fc = fc.replace(m.group(0), repl)
-                   with open(fpath, "w") as f:
-                       f.write(fc)
-                   patched += 1
-                   changes.append(f'v58: pinctrl skipped in {os.path.basename(fpath)}')
-           if patched == 0:
-               changes.append('WARNING: No pinctrl pattern found in any sdio .c file')
-           else:
-               changes.append(f'v58: skipped pinctrl in {patched} sdio file(s)')
-          V28EOF
+          # 4. v58: Skip redundant pinctrl_select_state in SDIO child (parent already applied)
+          # Parent platform device already bound pinctrl; SDIO child skip avoids conflict
+          # Comment out pinctrl_select_state calls entirely (replace with ret=0 dead block)
+          import glob, os
+          wcn_sdio = "drivers/net/wireless/unisoc/unisocwcn/sdio"
+          ptn = r'(\s*)(ret\s*=\s*pinctrl_select_state\([^;]+;)\s*\n(\s*)(if\s*\(ret\)\s*\{)'
+          patched = 0
+          for fpath in glob.glob(os.path.join(wcn_sdio, "*.c")):
+              with open(fpath, "r") as f:
+                  fc = f.read()
+              m = re.search(ptn, fc)
+              if m:
+                  indent = m.group(1)
+                  repl = (indent + '/* v58: pinctrl already applied by parent platform device */' + '\n' +
+                      indent + 'ret = 0; /* skip pinctrl_select_state */' + '\n' +
+                      indent + '{' + '\n' + indent + '\t(void)0; /* dead block for syntax */')
+                  fc = fc.replace(m.group(0), repl)
+                  with open(fpath, "w") as f:
+                      f.write(fc)
+                  patched += 1
+                  changes.append(f'v58: pinctrl skipped in {os.path.basename(fpath)}')
+          if patched == 0:
+              changes.append('WARNING: No pinctrl pattern found in any sdio .c file')
+          else:
+              changes.append(f'v58: skipped pinctrl in {patched} sdio file(s)')
           grep -c "of_find_device_by_node" $SDIOHAL && echo "compat wrapper installed" || echo "compat wrapper MISSING"
           grep -c "v28" $SDIOHAL && echo "v29 markers found" || echo "v29 markers MISSING"
           echo "ccflags-y += -DCONFIG_RK_BOARD" >> $WCN/sdio/Makefile
