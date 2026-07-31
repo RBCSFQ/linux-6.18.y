@@ -464,7 +464,7 @@ jobs:
           import re
           m = re.search(r'pinctrl_select_state\(marlin_dev->pinctrl,\s*marlin_dev->pins_default\)', content)
           if m:
-              guard = (\n
+              guard = (
                   "\t/* v62: pinctrl NULL guard */\n"
                   "\tif (marlin_dev->pinctrl && !IS_ERR(marlin_dev->pinctrl)) {\n"
                   "\t\tret = pinctrl_select_state(marlin_dev->pinctrl, marlin_dev->pins_default);\n"
