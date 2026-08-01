@@ -89,16 +89,10 @@ jobs:
           grep -rn "pub-int-gpio" $WCN/ $DRV/ 2>/dev/null || echo "pub-int-gpio not found in source"
           echo ""
           echo "=============================================="
-          echo "=== END INSPECTION ===
-          echo ""
-          echo "=== 11. mmc1 pinctrl-0 inspection ==="
-          grep -n "pinctrl-0" $DTS_DIR/rk3528-sy910.dts | head -10
-          echo ""
-          echo "=== 12. wifi_host_wake_irq references ==="
-          grep -n "wifi_host_wake_irq" $DTS_DIR/rk3528-sy910.dts"
+          echo "=== END INSPECTION ==="
           echo "=============================================="
 
-            - name: "STEP 1: Fix DTS compatible + v72 DTS pinctrl cleanup (Python)"
+      - name: "STEP 1: Fix DTS compatible (keep underscore for repo DTB build)"
         run: |
           DTS_DIR=arch/arm64/boot/dts/rockchip
           DTS=$DTS_DIR/rk3528-sy910.dts
@@ -123,46 +117,37 @@ jobs:
           fi
           grep -n "unisoc,uwe" $DTS
           echo ""
-          echo "=== v72: remove &wifi_host_wake_irq from uwe-bsp pinctrl-0 via Python ==="
-          python3 << 'PYPIN'
-import re, sys
-dts_path = "arch/arm64/boot/dts/rockchip/rk3528-sy910.dts"
-with open(dts_path, "r") as f:
-    text = f.read()
-mod_count = len(re.findall(r'wifi_host_wake_irq', text))
-print(f"Found {mod_count} wifi_host_wake_irq references before removal")
-text = re.sub(r'<&wifi_host_wake_irq>', '', text)
-text = re.sub(r'&wifi_host_wake_irq;?\s*', '', text)
-text = re.sub(r'<>\s*;', '', text)
-text = re.sub(r'<>\s*', '', text)
-with open(dts_path, "w") as f:
-    f.write(text)
-mod_count2 = len(re.findall(r'wifi_host_wake_irq', text))
-print(f"After: {mod_count2} wifi_host_wake_irq references remain (pin group definition OK)")
-PYPIN
-          echo "=== AFTER: uwe-bsp pinctrl ==="
-          awk '/uwe.bsp/{found=1} found{print; if(/};/ && found>1){exit}; if(/{/ && found) found++}' $DTS
-          echo ""
-          # DTS fixups (same as v71)
+          echo "=== STEP 1b: Remove pinctrl + pub-int-gpio from uwe-bsp (v72) ==="
+          sed -i '/uwe-bsp@1/,/};/s/pinctrl-0.*;//' $DTS
+          sed -i '/uwe-bsp@1/,/};/s/pinctrl-names.*;//' $DTS
+          echo "After pinctrl removal:"
+          sed -i '/uwe-bsp@1/,/};/s/interrupts.*;//' $DTS
+          sed -i '/uwe-bsp@1/,/};/s/interrupt-parent.*;//' $DTS
+          sed -i '/uwe-bsp@1/,/};/s/interrupt-names.*;//' $DTS
+          sed -i '/uwe-bsp@1/,/};/s/pub-int-gpio.*;//' $DTS
+          sed -n '/uwe-bsp@1/,/};/p' $DTS
+
+          # DTS cleanups
           sed -i "/rk3528-ddr4-lp3-v11/d" $DTS
-          LABELS="rng sdmmc_ext wifi-diable-gpio-regulator sdio-pwrseq bt-doseq wlan-diable-gpio-regulator"
-          for LABEL in $LABELS; do
-            if grep -q "^&$LABEL {" $DTS 2>/dev/null; then
-              sed -i "/^&$LABEL {/,/^};$/d" $DTS
-            fi
+          for LABEL in cpu0 gpu display_subsystem vop vop_mmu hdmi hdmi_in_vop usb2phy usbdrd30 usbdrd_dwc3 pcie2x1 rng sfc; do
+            sed -i "/^&$LABEL {/,/^};$/d" $DTS
           done
           sed -i "/drm-logo@0 {/,/};$/d" $DTS
           sed -i "/drm-cubic-lut@0 {/,/};$/d" $DTS
           sed -i "s/clocks = <&xin24m>;//g" $DTS
           sed -i "s/pcfg_pull_none_schmitt/pcfg_pull_none/g" $DTS
           sed -i "/^[\t ]*reserved-memory {$/,/^[\t ]*};$/d" $DTS
+
+          # v72: DT pub-int-gpio removed, driver skips GPIO claim
+          echo "v72: DTB patched at runtime by deploy script (pinctrl + pub-int-gpio removed)"
+
           # Ensure DTB is in Makefile
           if ! grep -q "rk3528-sy910.dtb" $DTS_DIR/Makefile; then
             sed -i "/^dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-evb1-ddr4-v10.dtb/a dtb-\$(CONFIG_ARCH_ROCKCHIP) += rk3528-sy910.dtb" $DTS_DIR/Makefile
           fi
-          echo "v72: DTS fix complete (wifi_host_wake_irq removed from uwe-bsp pinctrl-0)"
+          echo "DTS step complete"
 
-- name: "STEP 2: Patch unisoc drivers (API adaptation)"
+      - name: "STEP 2: Patch unisoc drivers (API adaptation)"
         run: |
           DRV=drivers/net/wireless/unisoc/unisocwifi
           WCN=drivers/net/wireless/unisoc/unisocwcn
