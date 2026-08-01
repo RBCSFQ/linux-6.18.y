@@ -608,6 +608,55 @@ jobs:
           grep -n -B2 "return platform_driver_register" $FILE | head -5
           echo "=== wcn_boot.c v71 patch complete ==="
 
+      
+      - name: "STEP 4.5: v72 diagnostic markers (pinpoint crash location)"
+        run: |
+          WCN=drivers/net/wireless/unisoc/unisocwcn
+          SDIO=$WCN/sdio/sdiohal_main.c
+          BOOT=$WCN/platform/wcn_boot.c
+          echo "=== v72: adding diagnostic markers ==="
+
+          # 1. start_marlin: trace every critical step
+          sed -i '/int start_marlin(/a\
+                  pr_err("v72 DIAG: start_marlin entry subsys=%d\\n", subsys);' $BOOT
+          sed -i '/the first power on start/a\
+                  pr_err("v72 DIAG: power-on sequence initiated\\n");' $BOOT
+          sed -i '/sdiohal_scan_card/a\
+                  pr_err("v72 DIAG: sdiohal_scan_card returned\\n");' $BOOT
+          sed -i '/chip power on fail/a\
+                  pr_err("v72 DIAG: chip power on FAIL\\n");' $BOOT
+
+          # 2. sdiohal_scan_card: trace entry and pinctrl
+          sed -i '/int sdiohal_scan_card(/a\
+                  pr_err("v72 DIAG: sdiohal_scan_card entry\\n");' $SDIO 2>/dev/null || true
+          sed -i '/sdiohal_scan_card/a\
+                  pr_err("v72 DIAG: sdiohal_scan_card entry\\n");' $SDIO 2>/dev/null || true
+          grep -n "sdiohal_scan_card" $SDIO | head -3
+
+          # 3. pinctrl area in sdiohal: mark before/after
+          if grep -q "pinctrl_select_state" $SDIO 2>/dev/null; then
+            sed -i '/pinctrl_select_state/ { i\
+                  pr_err("v72 DIAG: about to call pinctrl_select_state\\n");
+            a\
+                  pr_err("v72 DIAG: pinctrl_select_state done\\n");
+          }' $SDIO
+            echo "  pinctrl markers added"
+          else
+            echo "  pinctrl_select_state not found in sdiohal_main.c"
+          fi
+
+          # 4. sdiohal_init: entry
+          sed -i '/int sdiohal_init(/a\
+                  pr_err("v72 DIAG: sdiohal_init entry\\n");' $SDIO 2>/dev/null || true
+
+          # 5. marlin_probe: entry (already has v72 marker, add TTL-visible)
+          sed -i '/static int marlin_probe/a\
+                  pr_err("v72 DIAG: marlin_probe entry\\n");' $BOOT
+
+          echo "=== v72 diagnostic markers complete ==="
+          grep -c "v72 DIAG" $BOOT $SDIO 2>/dev/null || true
+
+
       - name: Configure kernel (ophub config + build vmlinux)
         run: |
           export ARCH=arm64
