@@ -1,0 +1,213 @@
+name: Compile SY910 WiFi Module for 6.18.18.c951-trim (v72)
+
+permissions:
+  contents: read
+  actions: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: RBCSFQ/linux-6.18.y
+          ref: main
+          fetch-depth: 0
+
+      - name: Install dependencies (GCC 12 to match ophub)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-12-aarch64-linux-gnu flex bison bc dwarves pahole libelf-dev device-tree-compiler
+          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-gcc-12 100
+          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-ar aarch64-linux-gnu-gcc-ar /usr/bin/aarch64-linux-gnu-gcc-ar-12 100
+          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-nm aarch64-linux-gnu-gcc-nm /usr/bin/aarch64-linux-gnu-gcc-nm-12 100
+          sudo update-alternatives --install /usr/bin/aarch64-linux-gnu-gcc-ranlib aarch64-linux-gnu-gcc-ranlib /usr/bin/aarch64-linux-gnu-gcc-ranlib-12 100
+          aarch64-linux-gnu-gcc --version
+
+      - name: "STEP 0: Comprehensive DTS/DTS source inspection"
+        run: |
+          echo "=============================================="
+          echo "=== v72: FULL DTS INSPECTION ==="
+          echo "=============================================="
+          DTS=arch/arm64/boot/dts/rockchip/rk3528-sy910.dts
+          WCN=drivers/net/wireless/unisoc/unisocwcn
+
+          echo ""
+          echo "=== 1. Full uwe-bsp@1 node ==="
+          awk '/uwe.bsp/{found=1} found{print; if(/};/ && found>1){exit}; if(/{/ && found) found++}' $DTS 2>/dev/null || echo "NOT FOUND"
+          echo ""
+          echo "=== 2. Full mmc1 (sdio) node ==="
+          awk '/&mmc1/{found=1} found{print; if(/};/ && found>1){exit}; if(/{/ && found) found++}' $DTS 2>/dev/null || echo "NOT FOUND"
+          echo ""
+          echo "=== 3. All pinctrl groups referencing gpio3-11 ==="
+          grep -n "3.*11\|gpio3.*11\|RK_PC3" $DTS | head -20 || echo "NOT FOUND"
+          echo ""
+          echo "=== 4. wifi_host_wake_irq pin group ==="
+          grep -n -A5 "wifi_host_wake_irq\|wifi-host-wake" $DTS | head -30 || echo "NOT FOUND"
+          echo ""
+          echo "=== 5. WL_DIS_N or chip-enable references ==="
+          grep -n -i "wl.dis\|wlan.en\|chip.en\|reg.on\|wl_reg_on\|bt_reg_on" $DTS | head -10 || echo "NOT FOUND"
+          echo ""
+          echo "=== 6. Driver compatible string ==="
+          grep -n "unisoc,uwe" $WCN/platform/wcn_boot.c
+          echo ""
+          echo "=== 7. start_marlin function head ==="
+          grep -n -A3 "int start_marlin" $WCN/platform/wcn_boot.c
+          echo ""
+          echo "=== 8. sdiohal_scan_card references ==="
+          grep -rn "sdiohal_scan_card\|sdiohal_init" $WCN/sdiohal/ | head -20 || echo "NOT FOUND in unisocwcn/"
+          echo ""
+          echo "=== 9. Kernel config file ==="
+          ls -la .github/config-6.18.18.c951-trim 2>/dev/null || echo "NOT FOUND"
+          echo ""
+          echo "=============================================="
+          echo "=== END v72 INSPECTION ==="
+          echo "=============================================="
+
+      - name: "STEP 1: Fix DTS compatible string"
+        run: |
+          DTS=arch/arm64/boot/dts/rockchip/rk3528-sy910.dts
+          WCN=drivers/net/wireless/unisoc/unisocwcn
+          DRV_COMPAT=$(grep -oP '"unisoc,uwe[^"]*"' $WCN/platform/wcn_boot.c | head -1 | tr -d '"')
+          echo "Driver compatible: $DRV_COMPAT"
+          DTS_COMPAT=$(grep -oP '"unisoc,uwe[^"]*"' $DTS | head -1 | tr -d '"')
+          echo "DTS compatible: $DTS_COMPAT"
+          if [ "$DRV_COMPAT" != "$DTS_COMPAT" ]; then
+            echo "Fixing: $DTS_COMPAT -> $DRV_COMPAT"
+            sed -i "s/\"unisoc,uwe[^\"]*\"/\"$DRV_COMPAT\"/" $DTS
+          else
+            echo "Compatible OK"
+          fi
+
+      - name: "STEP 2: v72 DTS fix - remove wifi-host-wake-irq from mmc1 pinctrl"
+        run: |
+          DTS=arch/arm64/boot/dts/rockchip/rk3528-sy910.dts
+          echo "=== BEFORE FIX: mmc1 pinctrl references ==="
+          grep -n "wifi_host_wake_irq" $DTS | head -10
+          echo ""
+          echo "Removing &wifi_host_wake_irq from mmc1 pinctrl-0..."
+          sed -i 's/<\&wifi_host_wake_irq>//g' $DTS
+          sed -i 's/\&wifi_host_wake_irq//g' $DTS
+          sed -i 's/<\s\+>/<>/g' $DTS
+          sed -i 's/<>;//g' $DTS
+          sed -i 's/<>//g' $DTS
+          echo ""
+          echo "=== AFTER FIX: mmc1 pinctrl references ==="
+          grep -n "wifi_host_wake_irq" $DTS | head -10 || echo "(all references removed)"
+          echo ""
+          echo "=== mmc1 node after fix ==="
+          awk '/&mmc1/{found=1} found{print; if(/};/ && found>1){exit}; if(/{/ && found) found++}' $DTS
+          echo ""
+          echo "=== v72 DTS fix complete ==="
+
+      - name: "STEP 3: Driver patches (debug output + GPIO inspection)"
+        run: |
+          FILE=drivers/net/wireless/unisoc/unisocwcn/platform/wcn_boot.c
+          echo "=== v72 driver patches ==="
+          sed -i '/return platform_driver_register/i\
+          printk(KERN_INFO "WCN: v72: registering platform driver\\n");' $FILE
+
+          sed -i '/static int marlin_probe/i\
+          printk(KERN_INFO "WCN: v72: entering marlin_probe (pinctrl kept, mmc1 pinctrl-0 cleaned)\\n");' $FILE
+
+          grep -n "WCN: v72" $FILE
+          echo "=== v72 driver patch complete ==="
+
+      - name: Configure kernel (ophub config + build vmlinux)
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          sed -i "s/^SUBLEVEL = .*/SUBLEVEL = 18/" Makefile
+          sed -i "s/^EXTRAVERSION =.*/EXTRAVERSION = .c951-trim/" Makefile
+          head -5 Makefile
+          export LOCALVERSION=""
+          KCONFIG_FILE=drivers/net/wireless/unisoc/Kconfig
+          sed -i "/select RK_WIFI_DEVICE_UWE5621/d" $KCONFIG_FILE
+          WCN_KCONFIG=drivers/net/wireless/unisoc/unisocwcn/Kconfig
+          sed -i "s/bool \"Rockchip UWE5621 BSP Support\"/tristate \"Rockchip UWE5621 BSP Support\"/" $WCN_KCONFIG
+          cp .github/config-6.18.18.c951-trim .config
+          echo "CONFIG_SPARD_WLAN_SUPPORT=y" >> .config
+          echo "CONFIG_SPRDWL_NG=m" >> .config
+          echo "CONFIG_WCN_BOOT=y" >> .config
+          echo "CONFIG_RK_WIFI_DEVICE_UWE5621=m" >> .config
+          make olddefconfig 2>&1 | tail -5
+          grep -E "LOCALVERSION|SPARD|SPRDWL|WCN|UWE5621" .config
+          make -j$(nproc) vmlinux 2>&1 | tail -20
+          ls -la vmlinux && echo "vmlinux built OK" || { echo "FAILED"; exit 1; }
+          make -j$(nproc) modules_prepare 2>&1 | tail -8
+
+      - name: Build cfg80211 in-tree (populate Module.symvers)
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
+          make -j$(nproc) M=net/wireless modules KBUILD_MODPOST_WARN=1 2>&1 | tail -20 || true
+          cp net/wireless/Module.symvers . 2>/dev/null || true
+          [ -f Module.symvers ] || touch Module.symvers
+          echo "Symbols: $(wc -l < Module.symvers 2>/dev/null || echo 0)"
+
+      - name: Build unisoc modules
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
+          UNISOC=drivers/net/wireless/unisoc
+          echo "=== unisocwcn ==="
+          make M=$UNISOC/unisocwcn modules KBUILD_MODPOST_WARN=1 2>&1 | tail -30 || true
+          echo "=== unisocwifi ==="
+          make M=$UNISOC/unisocwifi modules KBUILD_MODPOST_WARN=1 2>&1 | tail -30 || true
+          KO_COUNT=$(find $UNISOC -name "*.ko" 2>/dev/null | wc -l)
+          echo "=== Module count: $KO_COUNT ==="
+          find $UNISOC -name "*.ko" -ls 2>/dev/null || echo "NONE"
+          find $UNISOC -name "*.ko" 2>/dev/null | while read ko; do
+            echo "--- $ko ---"
+            modinfo "$ko" | grep -E "vermagic|depends|filename|license"
+          done
+          [ "$KO_COUNT" -eq 0 ] && { echo "FATAL: No modules built"; exit 1; }; true
+          echo "=== Stripping BTF ==="
+          for ko in $(find $UNISOC -name "*.ko"); do aarch64-linux-gnu-objcopy --remove-section=.BTF "$ko" 2>/dev/null || true; done
+          echo "Done"
+
+      - name: Build DTB (with v72 fix baked in)
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LOCALVERSION=""
+          make -j$(nproc) dtbs 2>&1 | tail -10
+          ls -la arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb || exit 1
+          echo ""
+          echo "=== v72 DTB verification: mmc1 pinctrl (should NOT have wifi-host-wake-irq) ==="
+          dtc -I dtb -O dts arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null | grep -B2 -A10 "mmc@ffc20000" | head -30
+          echo ""
+          echo "=== v72 DTB verification: uwe-bsp node ==="
+          dtc -I dtb -O dts arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb 2>/dev/null | awk '/uwe-bsp/{found=1} found{print; if(/};/ && found>1){exit}; if(/{/ && found) found++}'
+
+      - name: Package output (include compiled DTB)
+        run: |
+          rm -rf output
+          mkdir -p output/modules output/dtb
+          UNISOC=drivers/net/wireless/unisoc
+          find $UNISOC -name "*.ko" 2>/dev/null | while read f; do
+            dir="$(dirname "$f")"
+            mkdir -p "output/modules/$dir"
+            cp "$f" "output/modules/$dir/"
+          done
+          echo "Module count: $(find output/modules -name "*.ko" | wc -l)"
+          find output/modules -name "*.ko" | while read ko; do basename "$ko"; done > output/modules/modules.order 2>/dev/null || true
+          cp arch/arm64/boot/dts/rockchip/rk3528-sy910.dtb output/dtb/
+          ls -la output/dtb/
+          echo "=== Package contents ==="
+          find output -type f | sort
+          echo "=== DTB size ==="
+          ls -la output/dtb/rk3528-sy910.dtb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rk3528-sy910-wifi-modules
+          path: output/
