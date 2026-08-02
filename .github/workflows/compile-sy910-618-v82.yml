@@ -1,4 +1,4 @@
-﻿name: Compile SY910 WiFi Module v82 (UWE5621DS)
+name: Compile SY910 WiFi Module v82 (UWE5621DS)
 
 permissions:
   contents: read
@@ -390,13 +390,13 @@ jobs:
             if [ -n "$ELSE_REL" ]; then
               ELSE_ABS=$((ST_LINE + ELSE_REL))
 
-              # Write NULL guard to temp file, then insert after #else line
-              cat > /tmp/v82_guard.c << 'GUARDEOF'
-	if (!marlin_dev) {
-		WCN_ERR("v82: NULL marlin_dev in SDIO path, aborting start_marlin\n");
-		return -ENODEV;
-	}
-GUARDEOF
+              # Write NULL guard to temp file (printf avoids YAML heredoc indent issues)
+              printf '%s\n' \
+                '	if (!marlin_dev) {' \
+                '		WCN_ERR(\"v82: NULL marlin_dev in SDIO path, aborting start_marlin\n\");' \
+                '		return -ENODEV;' \
+                '	}' \
+                > /tmp/v82_guard.c
               sed -i "${ELSE_ABS}r /tmp/v82_guard.c" $WCN_BOOT
               echo "NULL guard inserted after line $ELSE_ABS"
             else
@@ -451,27 +451,27 @@ GUARDEOF
           echo "return platform_driver_register at line: $RET_LINE"
 
           if [ -n "$RET_LINE" ]; then
-            # Write diagnostic C code to temp file
-            cat > /tmp/v82_diag.c << 'DIAGEOF'
-	/* v82: GPIO diagnostic before driver registration */
-	{
-		struct device_node *wcn_np;
-		int __wl, __wake, __bt;
-
-		wcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe-bsp");
-		if (!wcn_np)
-			wcn_np = of_find_compatible_node(NULL, NULL, "unisoc,uwe_bsp");
-		if (wcn_np) {
-			__wl = of_get_named_gpio(wcn_np, "wl-reg-on", 0);
-			__wake = of_get_named_gpio(wcn_np, "pub-int-gpio", 0);
-			__bt = of_get_named_gpio(wcn_np, "bt-reg-on", 0);
-			WCN_INFO("v82: GPIO: wl-reg-on=%d pub-int-gpio=%d bt-reg-on=%d\n", __wl, __wake, __bt);
-			of_node_put(wcn_np);
-		} else {
-			WCN_INFO("v82: WARNING: uwe-bsp DT node not found\n");
-		}
-	}
-DIAGEOF
+            # Write diagnostic C code to temp file (printf avoids YAML heredoc indent issues)
+            printf '%s\n' \
+              '	/* v82: GPIO diagnostic before driver registration */' \
+              '	{' \
+              '		struct device_node *wcn_np;' \
+              '		int __wl, __wake, __bt;' \
+              '' \
+              '		wcn_np = of_find_compatible_node(NULL, NULL, \"unisoc,uwe-bsp\");' \
+              '		if (!wcn_np)' \
+              '			wcn_np = of_find_compatible_node(NULL, NULL, \"unisoc,uwe_bsp\");' \
+              '		if (wcn_np) {' \
+              '			__wl = of_get_named_gpio(wcn_np, \"wl-reg-on\", 0);' \
+              '			__wake = of_get_named_gpio(wcn_np, \"pub-int-gpio\", 0);' \
+              '			__bt = of_get_named_gpio(wcn_np, \"bt-reg-on\", 0);' \
+              '			WCN_INFO(\"v82: GPIO: wl-reg-on=%d pub-int-gpio=%d bt-reg-on=%d\n\", __wl, __wake, __bt);' \
+              '			of_node_put(wcn_np);' \
+              '		} else {' \
+              '			WCN_INFO(\"v82: WARNING: uwe-bsp DT node not found\n\");' \
+              '		}' \
+              '	}' \
+              > /tmp/v82_diag.c
             # Insert temp file BEFORE the return line (r appends after, so use line-1)
             if [ "$RET_LINE" -gt 1 ]; then
               sed -i "$((RET_LINE-1))r /tmp/v82_diag.c" $WCN_BOOT
