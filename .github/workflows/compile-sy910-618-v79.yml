@@ -336,7 +336,7 @@ jobs:
           for name in ["clk_32k", "parent", "source", "enable"]:
               pattern = re.compile(
                   rf'(\bmarlin_dev->clk_{name}\s*=\s*devm_clk_get\([^)]+\);)'
-                  rf'\s*\n(\s*)(if\s*\(IS_ERR\(marlin_dev->clk_{name}\)\)\s*' + '\{)'))
+                  rf'\s*\n(\s*)(if\s*\(IS_ERR\(marlin_dev->clk_{name}\)\)\s*' + '\{)')
               match = pattern.search(content)
               if match:
                   indent = match.group(2)
@@ -575,4 +575,3 @@ jobs:
         with:
           name: rk3528-sy910-wifi-modules
           path: output/
-
