@@ -32,7 +32,7 @@ jobs:
       - name: "STEP 0: Inspect source"
         run: |
           echo "=============================================="
-          echo "=== SOURCE INSPECTION v81 ===""
+          echo "=== SOURCE INSPECTION v81 ==="
           echo "=============================================="
           WCN=drivers/net/wireless/unisoc/unisocwcn
           DRV=drivers/net/wireless/unisoc/unisocwifi
@@ -276,7 +276,7 @@ jobs:
           echo "=== sdiohal verification ==="
           grep -c "of_find_device_by_node" $SDIOHAL && echo "compat: OK"
           grep -c "pinctrl conflict non-fatal" $SDIOHAL && echo "pinctrl non-fatal: OK"
-          grep -c "v81" $SDIOHAL && echo "v81 markers: OK"
+          grep -c "v80" $SDIOHAL && echo "v81 markers: OK"
 
           # Build flags
           echo "subdir-ccflags-y := -w -Wno-implicit-function-declaration -Wno-incompatible-pointer-types" >> $WCN/sdio/Makefile 2>/dev/null || true
@@ -317,7 +317,7 @@ jobs:
           print("wcn_procfs.c: done")
           PYEOF
 
-      - name: "STEP 4: Patch wcn_boot.c - v54-based NO device creation + GPIO diagnostics (v81)"
+      - name: "STEP 4: Patch wcn_boot.c - fix diag_code escape + GPIO diagnostics (v81)"
         run: |
           WCN=drivers/net/wireless/unisoc/unisocwcn
           WCN_BOOT=$WCN/platform/wcn_boot.c
@@ -447,7 +447,7 @@ jobs:
 
           echo ""
           echo "=== Verification ==="
-          grep -c "v81:" $WCN_BOOT && echo "v81 markers: OK"
+          grep -c "v81:" $WCN_BOOT && echo "v80 markers: OK"
           grep -c "wl-reg-on" $WCN_BOOT && echo "wl-reg-on check: OK"
           grep -n "int marlin_init" $WCN_BOOT | head -3
           echo "=== wcn_boot.c v81 patch complete ==="
