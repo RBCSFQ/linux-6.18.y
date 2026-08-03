@@ -133,11 +133,39 @@ jobs:
           # Reasoning: gpio3-11 will be managed through pub-int-gpio GPIO property
           # instead of pinctrl. This avoids the "pin gpio3-11 already requested
           # by ffc20000.mmc:uwe-bsp@1; cannot claim for mmc1:8800:1" error.
-          sed -i 's/, <&wifi-host-wake-irq>//' $DTS
-          sed -i 's/<&wifi-host-wake-irq>, //' $DTS
-          echo "DTS: removed wifi-host-wake-irq from pinctrl-0"
+          # Remove wifi_host_wake_irq from pinctrl-0 (source uses underscores!)
+          # Also remove pinctrl-names if pinctrl-0 becomes empty
+          python3 -c "
+          import re, sys
+          dts = '$DTS'
+          with open(dts, 'r') as f:
+              content = f.read()
+          in_uwe = False
+          lines = content.split('\n')
+          result = []
+          has_pinctrl_0 = False
+          for line in lines:
+              if 'uwe-bsp@1' in line:
+                  in_uwe = True
+                  has_pinctrl_0 = False
+              if in_uwe and '};' in line:
+                  in_uwe = False
+              if in_uwe and 'pinctrl-0' in line:
+                  has_pinctrl_0 = True
+          if not has_pinctrl_0:
+              print('DTS: no pinctrl-0 in uwe-bsp@1, skipping')
+              sys.exit(0)
+          # Remove wifi_host_wake_irq from pinctrl-0 line
+          content = re.sub(r'pinctrl-0\s*=\s*<&wifi_host_wake_irq>\s*;', '', content)
+          content = re.sub(r'pinctrl-names\s*=\s*\"default\"\s*;', '', content)
+          with open(dts, 'w') as f:
+              f.write(content)
+          print('DTS: removed wifi_host_wake_irq from pinctrl-0 (underscore naming)')
+          "
 
-          # === v84: Add wl-reg-on / pub-int-gpio / bt-reg-on to uwe-bsp@1 node ===
+          # === v84: Add wl-reg-on GPIO property (ONLY missing one) ===
+          # NOTE: pub-int-gpio and bt-reg-on already exist in the source DTS.
+          # Only wl-reg-on is missing and needs to be added.
           python3 << 'V84GPIO'
           import re
 
@@ -145,30 +173,56 @@ jobs:
           with open(dts, "r") as f:
               content = f.read()
 
+          # Check if wl-reg-on already exists
+          if 'wl-reg-on' in content:
+              print("v84: wl-reg-on already present in DTS, skipping")
+          else:
+              lines = content.split('\n')
+              result = []
+              in_uwe = False
+              gpio_added = False
+              for line in lines:
+                  if 'uwe-bsp@1' in line:
+                      in_uwe = True
+                      gpio_added = False
+                  if in_uwe and 'status = "okay"' in line and not gpio_added:
+                      indent = line[:len(line) - len(line.lstrip())]
+                      result.append(line)
+                      result.append(f'{indent}wl-reg-on = <&gpio3 10 0>;')
+                      print("v84: Added wl-reg-on GPIO property (chip enable)")
+                      gpio_added = True
+                      continue
+                  if in_uwe and '};' in line and gpio_added:
+                      in_uwe = False
+                  result.append(line)
+              content = '\n'.join(result)
+              with open(dts, "w") as f:
+                  f.write(content)
+
+          # Also fix: check and dedup pub-int-gpio / bt-reg-on if duplicates exist
           lines = content.split('\n')
-          result = []
+          deduped = []
+          seen_in_node = set()
           in_uwe = False
-          gpio_added = False
           for line in lines:
               if 'uwe-bsp@1' in line:
                   in_uwe = True
-                  gpio_added = False
-              if in_uwe and 'status = "okay"' in line and not gpio_added:
-                  indent = line[:len(line) - len(line.lstrip())]
-                  result.append(line)
-                  result.append(f'{indent}wl-reg-on = <&gpio3 10 0>;')
-                  result.append(f'{indent}pub-int-gpio = <&gpio3 11 0>;')
-                  result.append(f'{indent}bt-reg-on = <&gpio3 18 0>;')
-                  print(f"v84: Added GPIO properties after 'status = \"okay\"'")
-                  gpio_added = True
-                  continue
-              if in_uwe and '};' in line and gpio_added:
+                  seen_in_node = set()
+              if in_uwe and '};' in line:
                   in_uwe = False
-              result.append(line)
-
-          content = '\n'.join(result)
+              if in_uwe:
+                  m = re.match(r'^\s*(pub-int-gpio|bt-reg-on)\s*=', line)
+                  if m:
+                      prop = m.group(1)
+                      if prop in seen_in_node:
+                          print(f"v84: Removing duplicate {prop}")
+                          continue
+                      seen_in_node.add(prop)
+              deduped.append(line)
+          content = '\n'.join(deduped)
           with open(dts, "w") as f:
               f.write(content)
+          print("v84: DTS dedup complete")
           V84GPIO
 
           # Rationale: v54 proved that pinctrl intact -> system alive.
