@@ -1,4 +1,4 @@
-name: Build W132D Eth0 Motorcomm with fnOS Symbols
+name: Build W132D eth0 Motorcomm with fnOS Symbols
 on: workflow_dispatch
 jobs:
   build:
@@ -11,29 +11,39 @@ jobs:
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make python3
 
-      - name: Use fnOS exact config + FORCE enable Motorcomm
+      - name: Configure with forced Motorcomm (post-olddefconfig override)
         run: |
-          # 使用 fnOS 原始配置，避免无关驱动编译失败
           cp w132d_fnos.config .config
           
-          # ? 关键修复：强制开启 Motorcomm PHY 驱动
-          ./scripts/config -e CONFIG_MOTORCOMM_PHY
-          # 确保其依赖项也已开启
-          ./scripts/config -e CONFIG_PHYLIB
-          ./scripts/config -e CONFIG_OF_MDIO
-          
+          # 第一轮：先让 olddefconfig 处理基础依赖
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 注入 NAS 符号表
+          # ⭐ 关键修复：在 olddefconfig 之后再强制写入
+          # 这样即使依赖缺失，也会以 =m 形式保留在 .config 中
+          ./scripts/config -e CONFIG_MOTORCOMM_PHY
+          ./scripts/config -e CONFIG_PHYLIB
+          ./scripts/config -e CONFIG_OF_MDIO
+          ./scripts/config -e CONFIG_FIXED_PHY
+          
+          # 第二轮 olddefconfig 仅用于展开新选项的子依赖，不会删除已存在的 =m
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+          
+          # 注入 fnOS 符号表
           cp w132d_fnos-Module.symvers Module.symvers
           
-          # 仅准备头文件，不编译源码
+          # 准备构建环境
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare modules_prepare
 
-      - name: Verify motorcomm is enabled in .config
+      - name: Debug - verify motorcomm in final .config
         run: |
-          grep "CONFIG_MOTORCOMM_PHY=y\|CONFIG_MOTORCOMM_PHY=m" .config || \
-            (echo "FATAL: MOTORCOMM_PHY not enabled after olddefconfig" && exit 1)
+          echo "=== MOTORCOMM related config entries ==="
+          grep -i "MOTORCOMM\|PHYLIB\|OF_MDIO\|FIXED_PHY" .config || true
+          echo "========================================="
+          if ! grep -qE "^CONFIG_MOTORCOMM_PHY=[ym]" .config; then
+            echo "FATAL: CONFIG_MOTORCOMM_PHY is NOT set in final .config"
+            exit 1
+          fi
+          echo "✅ CONFIG_MOTORCOMM_PHY is enabled"
 
       - name: Build ONLY motorcomm.ko
         run: |
@@ -43,5 +53,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: motorcomm-ko-nas-matched
+          name: motorcomm-ko-fnOS-matched
           path: drivers/net/phy/motorcomm.ko
