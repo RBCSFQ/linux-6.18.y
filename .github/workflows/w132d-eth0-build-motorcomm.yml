@@ -1,4 +1,4 @@
-name: Build W132D ETH0 Motorcomm PHY Module
+name: Build W132D Eth0 Motorcomm PHY Module (Fixed)
 on: workflow_dispatch
 jobs:
   build:
@@ -11,27 +11,30 @@ jobs:
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make python3
 
-      - name: Configure kernel for RK3528 + Motorcomm
+      - name: Configure kernel
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
           ./scripts/config -e CONFIG_MOTORCOMM_PHY
           ./scripts/config -e CONFIG_STMMAC_ETH
           ./scripts/config -e CONFIG_DWMAC_ROCKCHIP
           ./scripts/config -e CONFIG_OF_MDIO
-          # 确保栈保护选项与目标内核一致，避免 -mstack-protector-guard-offset 报错
           ./scripts/config -d CONFIG_STACKPROTECTOR_STRONG
           ./scripts/config -e CONFIG_STACKPROTECTOR
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
 
-      - name: Prepare kernel build environment (CRITICAL)
+      - name: Full kernel prepare + build vmlinux & core modules
         run: |
-          # 这一步会生成 asm-offsets.h 并准备所有必要的头文件
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
+          # 关键：必须先完整编译 vmlinux 和所有依赖模块，生成 Module.symvers
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) vmlinux modules
+          
+      - name: Verify Module.symvers exists
+        run: |
+          ls -la Module.symvers
+          grep -c "phy_drivers_register" Module.symvers || echo "WARNING: phylib symbols not found"
 
-      - name: Build motorcomm.ko module
+      - name: Build only motorcomm.ko (with full symbol table)
         run: |
-          # 必须在内核根目录下使用 M= 参数，而不是 cd 到子目录
+          # 此时 Module.symvers 已包含所有 PHY 子系统符号
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M=drivers/net/phy modules
           ls -la drivers/net/phy/motorcomm.ko
 
