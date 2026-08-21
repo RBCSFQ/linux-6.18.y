@@ -11,21 +11,29 @@ jobs:
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make python3
 
-      - name: Use fnOS exact config and symbols
+      - name: Use fnOS exact config + FORCE enable Motorcomm
         run: |
           # 使用 fnOS 原始配置，避免无关驱动编译失败
           cp w132d_fnos.config .config
+          
+          # ? 关键修复：强制开启 Motorcomm PHY 驱动
+          ./scripts/config -e CONFIG_MOTORCOMM_PHY
+          # 确保其依赖项也已开启
+          ./scripts/config -e CONFIG_PHYLIB
+          ./scripts/config -e CONFIG_OF_MDIO
+          
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
           
-          # 注入 fnOS 的 Module.symvers，解决 undefined symbol
+          # 注入 NAS 符号表
           cp w132d_fnos-Module.symvers Module.symvers
           
-          # 仅准备头文件和构建脚本，不编译任何 .c 文件
+          # 仅准备头文件，不编译源码
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare modules_prepare
 
-      - name: Verify critical symbols
+      - name: Verify motorcomm is enabled in .config
         run: |
-          grep "phy_drivers_register" Module.symvers || (echo "FATAL: Missing PHY symbols" && exit 1)
+          grep "CONFIG_MOTORCOMM_PHY=y\|CONFIG_MOTORCOMM_PHY=m" .config || \
+            (echo "FATAL: MOTORCOMM_PHY not enabled after olddefconfig" && exit 1)
 
       - name: Build ONLY motorcomm.ko
         run: |
