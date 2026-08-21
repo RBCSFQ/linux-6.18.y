@@ -1,4 +1,4 @@
-name: Build W132D Eth0 Motorcomm PHY Module (Fixed)
+name: Build Motorcomm with NAS Symbols
 on: workflow_dispatch
 jobs:
   build:
@@ -6,40 +6,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install cross-compiler and deps
+      - name: Install cross-compiler
         run: |
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make python3
 
-      - name: Configure kernel
+      - name: Use NAS exact config and symbols
         run: |
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
-          ./scripts/config -e CONFIG_MOTORCOMM_PHY
-          ./scripts/config -e CONFIG_STMMAC_ETH
-          ./scripts/config -e CONFIG_DWMAC_ROCKCHIP
-          ./scripts/config -e CONFIG_OF_MDIO
-          ./scripts/config -d CONFIG_STACKPROTECTOR_STRONG
-          ./scripts/config -e CONFIG_STACKPROTECTOR
+          # 使用 NAS 原始配置，避免无关驱动编译失败
+          cp nas.config .config
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-
-      - name: Full kernel prepare + build vmlinux & core modules
-        run: |
-          # 关键：必须先完整编译 vmlinux 和所有依赖模块，生成 Module.symvers
-          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) vmlinux modules
           
-      - name: Verify Module.symvers exists
-        run: |
-          ls -la Module.symvers
-          grep -c "phy_drivers_register" Module.symvers || echo "WARNING: phylib symbols not found"
+          # 注入 NAS 的 Module.symvers，解决 undefined symbol
+          cp nas-Module.symvers Module.symvers
+          
+          # 仅准备头文件和构建脚本，不编译任何 .c 文件
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare modules_prepare
 
-      - name: Build only motorcomm.ko (with full symbol table)
+      - name: Verify critical symbols
         run: |
-          # 此时 Module.symvers 已包含所有 PHY 子系统符号
+          grep "phy_drivers_register" Module.symvers || (echo "FATAL: Missing PHY symbols" && exit 1)
+
+      - name: Build ONLY motorcomm.ko
+        run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M=drivers/net/phy modules
           ls -la drivers/net/phy/motorcomm.ko
 
-      - name: Upload module artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: motorcomm-ko-6.18
+          name: motorcomm-ko-nas-matched
           path: drivers/net/phy/motorcomm.ko
