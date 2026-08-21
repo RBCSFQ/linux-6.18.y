@@ -1,27 +1,41 @@
-name: Build Motorcomm PHY Module
+name: Build W132D ETH0 Motorcomm PHY Module
 on: workflow_dispatch
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross-compiler
+      
+      - name: Install cross-compiler and deps
         run: |
           sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make
-      - name: Minimal config for RK3528 + Motorcomm
+          sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make python3
+
+      - name: Configure kernel for RK3528 + Motorcomm
         run: |
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
           ./scripts/config -e CONFIG_MOTORCOMM_PHY
           ./scripts/config -e CONFIG_STMMAC_ETH
           ./scripts/config -e CONFIG_DWMAC_ROCKCHIP
           ./scripts/config -e CONFIG_OF_MDIO
+          # 确保栈保护选项与目标内核一致，避免 -mstack-protector-guard-offset 报错
+          ./scripts/config -d CONFIG_STACKPROTECTOR_STRONG
+          ./scripts/config -e CONFIG_STACKPROTECTOR
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
-      - name: Build only motorcomm.ko
+
+      - name: Prepare kernel build environment (CRITICAL)
         run: |
+          # 这一步会生成 asm-offsets.h 并准备所有必要的头文件
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- modules_prepare
+
+      - name: Build motorcomm.ko module
+        run: |
+          # 必须在内核根目录下使用 M= 参数，而不是 cd 到子目录
           make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M=drivers/net/phy modules
           ls -la drivers/net/phy/motorcomm.ko
-      - name: Upload module
+
+      - name: Upload module artifact
         uses: actions/upload-artifact@v4
         with:
           name: motorcomm-ko-6.18
