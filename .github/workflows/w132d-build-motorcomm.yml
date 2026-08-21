@@ -1,0 +1,28 @@
+name: Build Motorcomm PHY Module
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross-compiler
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu bc bison flex libssl-dev make
+      - name: Minimal config for RK3528 + Motorcomm
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- defconfig
+          ./scripts/config -e CONFIG_MOTORCOMM_PHY
+          ./scripts/config -e CONFIG_STMMAC_ETH
+          ./scripts/config -e CONFIG_DWMAC_ROCKCHIP
+          ./scripts/config -e CONFIG_OF_MDIO
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- olddefconfig
+      - name: Build only motorcomm.ko
+        run: |
+          make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- M=drivers/net/phy modules
+          ls -la drivers/net/phy/motorcomm.ko
+      - name: Upload module
+        uses: actions/upload-artifact@v4
+        with:
+          name: motorcomm-ko-6.18
+          path: drivers/net/phy/motorcomm.ko
